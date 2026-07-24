@@ -1,56 +1,90 @@
 ;;;; src/convenience.lisp
-
+;;;
+;;; The core logging surface: the level check, the single emit path
+;;; (%EMIT-LOG-UNCHECKED), and the LOG / LOG-DEFAULT / LOG-<LEVEL> macro
+;;; families generated from one data table by DEFINE-LOG-LEVEL-MACROS. The
+;;; field-plist helpers at the bottom are shared by condition-logging.lisp
+;;; and span.lisp.
 (in-package #:log-kit)
 
-(defun %resolve-logger-message-fields (logger-or-message message-and-fields)
-  "LOGGER-OR-MESSAGE is either a LOGGER instance (in which case the first
-element of MESSAGE-AND-FIELDS is the message and the rest are the field
-plist) or the message itself (in which case *DEFAULT-LOGGER* is used and
-all of MESSAGE-AND-FIELDS is the field plist). Returns (values logger
-message fields-plist)."
-  (if (typep logger-or-message 'logger)
-      (values logger-or-message (first message-and-fields) (rest message-and-fields))
-      (values *default-logger* logger-or-message message-and-fields)))
+(defun log-enabled-p (logger level)
+  (check-type logger logger)
+  (check-type level integer)
+  (>= level (logger-level logger)))
 
-(defun %dispatch-log (level logger-or-message message-and-fields)
-  "Filter by level and, only if the record would actually be emitted,
-build a LOG-RECORD and hand it to the logger's handler exactly once."
-  (multiple-value-bind (logger message fields)
-      (%resolve-logger-message-fields logger-or-message message-and-fields)
-    ;; Levels below the logger's configured level are dropped here, before
-    ;; HANDLE-LOG-RECORD is ever called -- no handler work happens for
-    ;; filtered-out records.
-    (unless (level< level (logger-level logger))
-      (let ((record (make-log-record
-                     :level level
-                     :message message
-                     :timestamp (funcall (logger-clock logger))
-                     :fields (append (plist-to-alist fields) (logger-fields logger))
-                     :logger-name (logger-name logger))))
-        (handle-log-record (logger-handler logger) record)))
-    (values)))
+(defun %emit-log-unchecked (logger level message fields-plist)
+  "Build and hand a LOG-RECORD to LOGGER's handler without checking
+LOG-ENABLED-P first. Every LOG-* macro already checks the level before
+reaching here, so this is the one place a record is actually constructed
+and emitted."
+  (check-type message string)
+  (let* ((event-fields (plist-to-alist fields-plist))
+         (context-fields (if *log-context-fields*
+                             (%merge-field-alists *log-context-fields* (%logger-fields logger))
+                             (%logger-fields logger)))
+         (fields (%merge-field-alists event-fields context-fields))
+         (record (%build-log-record level message (funcall (logger-clock logger)) fields
+                                    (%logger-name logger))))
+    (handle-log-record (logger-handler logger) record)
+    record))
 
-(defun log-debug (logger-or-message &rest message-and-fields)
-  "Log at DEBUG level. See package docstring for the flexible
-LOGGER-OR-MESSAGE calling convention."
-  (%dispatch-log +level-debug+ logger-or-message message-and-fields))
+(defun emit-log (logger level message &optional (fields-plist nil))
+  (check-type logger logger)
+  (check-type level integer)
+  (when (log-enabled-p logger level)
+    (%emit-log-unchecked logger level message fields-plist)))
 
-(defun log-info (logger-or-message &rest message-and-fields)
-  "Log at INFO level. See package docstring for the flexible
-LOGGER-OR-MESSAGE calling convention."
-  (%dispatch-log +level-info+ logger-or-message message-and-fields))
+(defmacro with-default-logger ((logger) &body body)
+  `(let ((*default-logger* ,logger))
+     (check-type *default-logger* logger)
+     ,@body))
 
-(defun log-warn (logger-or-message &rest message-and-fields)
-  "Log at WARN level. See package docstring for the flexible
-LOGGER-OR-MESSAGE calling convention."
-  (%dispatch-log +level-warn+ logger-or-message message-and-fields))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun %expand-log-form (logger level message fields)
+    "Expand to code that checks LOG-ENABLED-P once, evaluating LOGGER and
+LEVEL exactly once and MESSAGE/FIELDS not at all when the event is
+filtered."
+    (let ((logger-var (gensym "LOGGER"))
+          (level-var (gensym "LEVEL")))
+      `(let ((,logger-var ,logger)
+             (,level-var ,level))
+         (when (log-enabled-p ,logger-var ,level-var)
+           (%emit-log-unchecked ,logger-var ,level-var ,message (list ,@fields))))))
 
-(defun log-error (logger-or-message &rest message-and-fields)
-  "Log at ERROR level. See package docstring for the flexible
-LOGGER-OR-MESSAGE calling convention."
-  (%dispatch-log +level-error+ logger-or-message message-and-fields))
+  (defun %expand-log-level-form (logger-or-message arguments level)
+    ;; Default calls have 2N trailing fields; explicit calls have a message plus 2N.
+    (if (evenp (length arguments))
+        (%expand-log-form '*default-logger* level logger-or-message arguments)
+        (%expand-log-form logger-or-message level (first arguments) (rest arguments)))))
 
-(defun log-fatal (logger-or-message &rest message-and-fields)
-  "Log at FATAL level. See package docstring for the flexible
-LOGGER-OR-MESSAGE calling convention."
-  (%dispatch-log +level-fatal+ logger-or-message message-and-fields))
+(defmacro log (logger level message &rest fields)
+  (%expand-log-form logger level message fields))
+
+(defmacro log-default (level message &rest fields)
+  (%expand-log-form '*default-logger* level message fields))
+
+(defmacro define-log-level-macros (&body specs)
+  "Generate dual-convention LOG-<LEVEL> and explicit LOG-DEFAULT-<LEVEL> macros."
+  `(progn
+     ,@(loop for (explicit default level) in specs
+             collect `(defmacro ,explicit (logger-or-message &rest arguments)
+                        (%expand-log-level-form logger-or-message arguments ',level))
+             collect `(defmacro ,default (message &rest fields)
+                        (%expand-log-form '*default-logger* ',level message fields)))))
+
+(define-log-level-macros
+  (log-debug log-default-debug +level-debug+)
+  (log-info  log-default-info  +level-info+)
+  (log-warn  log-default-warn  +level-warn+)
+  (log-error log-default-error +level-error+)
+  (log-fatal log-default-fatal +level-fatal+))
+
+(defun %field-alist-to-plist (fields)
+  (loop for (key . value) in fields append (list key value)))
+
+(defun %merge-field-plists (preferred fallback)
+  (%field-alist-to-plist (%merge-field-alists (plist-to-alist preferred) (plist-to-alist fallback))))
+
+(defun %without-field-keys (fields keys)
+  (%field-alist-to-plist
+   (remove-if (lambda (field) (member (car field) keys :test #'eq)) (plist-to-alist fields))))

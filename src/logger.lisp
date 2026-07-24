@@ -1,48 +1,130 @@
 ;;;; src/logger.lisp
-
+;;;
+;;; LOGGER: the immutable configuration and contextual fields a log call
+;;; reads from. LOGGER-WITH / DERIVE-LOGGER / LOGGER-CHILD all build a new
+;;; logger from an old one rather than mutating in place.
 (in-package #:log-kit)
 
+;;; Bound only around %MAKE-LOGGER-FROM-SNAPSHOT, where FIELDS is already a
+;;; snapshotted alist and re-snapshotting it through PLIST-TO-ALIST would be
+;;; both wrong (it is not a plist) and wasted work.
+(defvar *logger-fields-are-snapshot* nil)
+
+(defvar *log-context-fields* nil
+  "Dynamically scoped field snapshot used by WITH-LOG-CONTEXT.")
+
+(defun %unix-time ()
+  (- (get-universal-time) 2208988800))
+
 (defclass logger ()
-  ((name :initarg :name :reader logger-name :initform "root")
+  ((name :initarg :name :reader %logger-name :initform "root")
    (handler :initarg :handler :reader logger-handler)
    (level :initarg :level :reader logger-level :initform +level-info+)
-   (fields :initarg :fields :reader logger-fields :initform nil)
-   (clock :initarg :clock :reader logger-clock :initform #'get-universal-time))
-  (:documentation "Binds a name, a handler, a minimum level, contextual
-fields, and a clock (timestamp source, overridable for deterministic
-tests)."))
+   (fields :initarg :fields :reader %logger-fields :initform nil)
+   (clock :initarg :clock :reader logger-clock :initform #'%unix-time))
+  (:documentation "Logging configuration and immutable contextual fields."))
 
-(defun make-logger (&key (name "root")
-                       (handler (make-instance 'text-handler))
-                       (level +level-info+)
-                       fields
-                       (clock #'get-universal-time))
-  "Create a new LOGGER. FIELDS is a plist (:key1 val1 :key2 val2 ...) of
-context that will be attached to every record this logger emits."
-  (make-instance 'logger
-                  :name name
-                  :handler handler
-                  :level level
-                  :fields (plist-to-alist fields)
-                  :clock clock))
+(defun %validate-logger-initargs (initargs)
+  (unless (%proper-list-p initargs)
+    (error 'program-error))
+  (loop for tail on initargs by #'cddr
+        for key = (car tail)
+        unless (member key '(:name :handler :level :fields :clock) :test #'eq)
+          do (error 'program-error)))
+
+(defmethod initialize-instance :around ((instance logger) &rest initargs &key (name "root")
+                                        (handler (make-instance 'text-handler))
+                                        (level +level-info+) (fields nil) (clock #'%unix-time))
+  (%validate-logger-initargs initargs)
+  (check-type name string)
+  (check-type handler handler)
+  (check-type level integer)
+  (check-type clock function)
+  (%check-field-string-length name)
+  (call-next-method instance :name (copy-seq name) :handler handler :level level
+                    :fields (if *logger-fields-are-snapshot* fields (plist-to-alist fields))
+                    :clock clock))
+
+(defun logger-name (logger)
+  (copy-seq (%logger-name logger)))
+
+(defun logger-fields (logger)
+  (%copy-field-alist (%logger-fields logger)))
+
+(defun make-logger (&key (name "root") (handler (make-instance 'text-handler)) (level +level-info+)
+                    (fields nil) (clock #'%unix-time))
+  (make-instance 'logger :name name :handler handler :level level :fields fields :clock clock))
+
+(defun %make-logger-from-snapshot (name handler level fields clock)
+  (let ((*logger-fields-are-snapshot* t))
+    (make-instance 'logger :name name :handler handler :level level :fields fields :clock clock)))
+
+(defun %merge-field-alists (overrides base)
+  "Merge two field alists, keeping the first entry seen for each canonical
+key: every pair in OVERRIDES, then every pair in BASE whose key OVERRIDES
+did not already claim."
+  (let ((seen (make-hash-table :test #'equal))
+        (result nil))
+    (dolist (pair overrides)
+      (setf (gethash (%canonical-field-name (car pair)) seen) t)
+      (push (cons (car pair) (cdr pair)) result))
+    (dolist (pair base)
+      (unless (gethash (%canonical-field-name (car pair)) seen)
+        (push (cons (car pair) (cdr pair)) result)))
+    (nreverse result)))
 
 (defun logger-with (logger &rest fields)
-  "Return a *new* logger that shares LOGGER's name, handler, level, and
-clock, but whose fields are LOGGER's fields merged with FIELDS (a plist).
-LOGGER itself is never mutated, so previously created loggers (including
-LOGGER) keep seeing their own, unaffected field set."
-  (make-instance 'logger
-                  :name (logger-name logger)
-                  :handler (logger-handler logger)
-                  :level (logger-level logger)
-                  :fields (append (plist-to-alist fields) (logger-fields logger))
-                  :clock (logger-clock logger)))
+  (check-type logger logger)
+  (%make-logger-from-snapshot (%logger-name logger) (logger-handler logger) (logger-level logger)
+                              (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
+                              (logger-clock logger)))
+
+(defun derive-logger (logger &key (name nil name-p) (handler nil handler-p) (level nil level-p)
+                      (fields nil fields-p) (clock nil clock-p))
+  (check-type logger logger)
+  (let ((derived-name (if name-p name (%logger-name logger)))
+        (derived-handler (if handler-p handler (logger-handler logger)))
+        (derived-level (if level-p level (logger-level logger)))
+        (derived-clock (if clock-p clock (logger-clock logger)))
+        (derived-fields (if fields-p
+                            (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
+                            (%logger-fields logger))))
+    (check-type derived-name string)
+    (check-type derived-handler handler)
+    (check-type derived-level integer)
+    (check-type derived-clock function)
+    (%check-field-string-length derived-name)
+    (%make-logger-from-snapshot derived-name derived-handler derived-level derived-fields
+                                derived-clock)))
+
+(defun %valid-logger-name-element-p (name)
+  (and (stringp name)
+       (plusp (length name))
+       (char/= (char name 0) #\.)
+       (char/= (char name (1- (length name))) #\.)
+       (null (search ".." name))))
+
+(defun logger-child (logger child-name &rest fields)
+  (check-type logger logger)
+  (unless (%valid-logger-name-element-p child-name)
+    (error 'type-error :datum child-name
+           :expected-type '(and string (satisfies %valid-logger-name-element-p))))
+  (let ((combined-name-length (+ (length (%logger-name logger)) 1 (length child-name))))
+    (%check-snapshot-size :string-length combined-name-length +max-log-field-string-length+)
+    (derive-logger logger :name (concatenate 'string (%logger-name logger) "." child-name)
+                          :fields fields)))
+
+(defmacro with-log-context ((&rest fields) &body body)
+  "Run BODY with FIELDS merged onto the dynamically scoped log context, so
+every log call made anywhere in BODY (not just calls with LOGGER directly in
+scope) picks them up until BODY returns."
+  `(let ((*log-context-fields* (%merge-field-alists (plist-to-alist (list ,@fields))
+                                                     *log-context-fields*)))
+     ,@body))
 
 (defvar *default-logger* (make-logger)
-  "The logger used by LOG-DEBUG/LOG-INFO/LOG-WARN/LOG-ERROR/LOG-FATAL when
-no explicit logger is passed as their first argument.")
+  "The dynamically scoped logger used by LOG-DEFAULT-* convenience macros.")
 
 (defun set-default-logger (logger)
-  "Replace *DEFAULT-LOGGER* with LOGGER."
   (check-type logger logger)
   (setf *default-logger* logger))
