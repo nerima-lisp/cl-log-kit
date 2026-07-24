@@ -7,6 +7,7 @@
 # Nix build outputs
 /result
 /result-*
+coverage/
 
 # Editor/tool scratch output
 tmp/

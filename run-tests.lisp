@@ -1,36 +1,26 @@
 ;;;; run-tests.lisp
 ;;;
-;;; Bootstrap script: registers this repository and cl-weave with ASDF's
-;;; source registry, loads the test system, and runs the suite.
-
+;;; Bootstrap script: prepends this repository to ASDF's source registry,
+;;; loads the test system, and runs the suite.
 (require :asdf)
 
 (defun script-directory ()
-  (make-pathname :name nil
-                 :type nil
+  (make-pathname :name nil :type nil
                  :defaults (or *load-truename*
-                               *compile-file-truename*
-                               (error "Unable to determine the script location"))))
+                              *compile-file-truename*
+                              (error "Unable to determine the script location"))))
 
-(defparameter +cl-weave-directory+
-  #P"/Users/take/ghq/github.com/nerima-lisp/cl-weave/")
-
-(defun configure-source-registry (directories)
-  (let* ((entries (mapcar (lambda (directory)
-                            (format nil "~A//" (namestring directory)))
-                          directories))
-         (local-registry (format nil "~{~A~^:~}" entries))
-         (existing-registry (uiop:getenv "CL_SOURCE_REGISTRY"))
-         (source-registry (if (and existing-registry (plusp (length existing-registry)))
-                              (format nil "~A:~A" local-registry existing-registry)
-                              local-registry)))
-    (setf (uiop:getenv "CL_SOURCE_REGISTRY") source-registry)
-    (asdf:initialize-source-registry)
-    source-registry))
+(defun configure-source-registry (root)
+  "Prepend ROOT to CL_SOURCE_REGISTRY while preserving its existing configuration."
+  (let* ((local-registry (format nil "~A//" (namestring root)))
+         (existing (uiop:getenv "CL_SOURCE_REGISTRY"))
+         (combined (if (and existing (plusp (length existing)))
+                      (format nil "~A:~A" local-registry existing)
+                      (format nil "~A:" local-registry))))
+    (setf (uiop:getenv "CL_SOURCE_REGISTRY") combined)
+    (asdf:initialize-source-registry)))
 
 (let ((root (script-directory)))
-  (configure-source-registry (list root +cl-weave-directory+))
-  (asdf:load-system "cl-log-kit/test")
-  (unless (funcall (symbol-function (find-symbol "RUN-TESTS" "CL-LOG-KIT/TEST")))
-    (uiop:quit 1))
+  (configure-source-registry root)
+  (asdf:test-system "cl-log-kit")
   (uiop:quit 0))
