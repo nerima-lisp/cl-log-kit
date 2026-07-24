@@ -65,7 +65,7 @@
         rec {
           cl-log-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "1.0.0";
+            version = "1.1.0";
             src = self;
             systems = [ "cl-log-kit" ];
           };
