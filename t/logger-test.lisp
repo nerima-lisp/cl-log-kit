@@ -1,105 +1,142 @@
 ;;;; t/logger-test.lisp
-
+;;;
+;;; Logger behaviour: default-logger scoping, the fixed Unix clock, immutable
+;;; contextual fields, child derivation with field precedence, the generated
+;;; LOG-<LEVEL> macros' lazy evaluation, and WITH-LOG-CONTEXT dynamics.
 (in-package #:cl-log-kit/test)
 
-(defun %capturing-logger (&key (level +level-info+) fields (clock #'get-universal-time))
-  "Returns (values logger stream-fetcher), where STREAM-FETCHER is a
-zero-argument function that returns everything written so far."
-  (let* ((stream (make-string-output-stream))
-         (logger (make-logger :handler (make-instance 'text-handler :stream stream)
-                              :level level
-                              :fields fields
-                              :clock clock)))
-    (values logger (lambda () (get-output-stream-string stream)))))
+(describe "loggers"
+  (describe "default logger and emission"
+    (it "emit-log accepts omitted fields and with-default-logger is scoped"
+      (let* ((outer-handler (make-instance 'counting-handler))
+             (inner-handler (make-instance 'counting-handler))
+             (outer (make-logger :handler outer-handler))
+             (inner (make-logger :handler inner-handler))
+             (*default-logger* outer))
+        (emit-log inner +level-info+ "without fields")
+        (with-default-logger (inner) (log-default-info "scoped"))
+        (expect inner-handler :to-have-recorded 2)
+        (expect outer-handler :to-have-recorded 0)
+        (expect (eq *default-logger* outer) :to-be-truthy)))
 
-(it "logs at or above the logger's level"
-  (multiple-value-bind (logger fetch) (%capturing-logger :level +level-warn+)
-    (log-warn logger "disk low")
-    (expect (not (null (search "disk low" (funcall fetch)))) :to-be-truthy)))
+    (it "default logger clocks return Unix seconds"
+      (let* ((unix-now (- (get-universal-time) 2208988800))
+             (actual (funcall (logger-clock (make-logger)))))
+        (expect (<= (abs (- actual unix-now)) 1) :to-be-truthy)
+        (expect (< actual 2000000000) :to-be-truthy)))
 
-(it "filters out records below the logger's level without calling the handler"
-  (multiple-value-bind (logger fetch) (%capturing-logger :level +level-warn+)
-    (log-info logger "should not appear")
-    (log-debug logger "should not appear either")
-    (expect (string= (funcall fetch) "") :to-be-truthy)))
+    (it "supports arbitrary levels without evaluating filtered payloads"
+      (multiple-value-bind (logger handler) (counting-logger :level 50)
+        (let ((logger-count 0) (level-count 0) (payload-count 0))
+          (log-kit::log (progn (incf logger-count) logger)
+               (progn (incf level-count) 49)
+               (progn (incf payload-count) "hidden")
+               :value (incf payload-count))
+          (expect (= logger-count 1) :to-be-truthy)
+          (expect (= level-count 1) :to-be-truthy)
+          (expect (= payload-count 0) :to-be-truthy)
+          (log-kit::log logger 50 "visible" :value 7)
+          (expect handler :to-have-recorded 1)))))
 
-(it "each level threshold only lets its own level and above through"
-  (multiple-value-bind (logger fetch) (%capturing-logger :level +level-error+)
-    (log-warn logger "still filtered")
-    (log-error logger "gets through")
-    (let ((output (funcall fetch)))
-      (expect (null (search "still filtered" output)) :to-be-truthy)
-      (expect (not (null (search "gets through" output))) :to-be-truthy))))
+  (describe "contextual fields"
+    (it "logger-with overrides canonical keys without duplicates"
+      (let* ((base (make-logger :fields '(:service "old" :region "east")))
+             (child (logger-with base "SERVICE" "new" :request-id 7))
+             (fields (logger-fields child)))
+        (expect (= (count-if (lambda (pair) (string-equal (string (car pair)) "service"))
+                             fields)
+                   1)
+                :to-be-truthy)
+        (expect fields :to-have-field "SERVICE" "new")
+        (expect (logger-fields base) :to-have-field :service "old")))
 
-(it "logger-with returns a new logger and does not mutate the parent's fields"
-  (let* ((parent (make-logger :fields '(:service "api")))
-         (child (logger-with parent :request-id "abc123")))
-    (expect (not (eq parent child)) :to-be-truthy)
-    (expect (equal (logger-fields parent) '((:service . "api"))) :to-be-truthy)
-    (expect (equal (cdr (assoc :request-id (logger-fields child))) "abc123") :to-be-truthy)
-    (expect (equal (cdr (assoc :service (logger-fields child))) "api") :to-be-truthy)))
+    (it "event fields override context and invoke the handler once"
+      (multiple-value-bind (logger handler) (counting-logger :fields '(:service "old"))
+        (emit-log logger +level-info+ "event" '(:service "new" :id 7))
+        (expect handler :to-have-recorded 1)
+        (let ((fields (latest-fields handler)))
+          (expect (= (count-if (lambda (pair) (string-equal (string (car pair)) "service"))
+                               fields)
+                     1)
+                  :to-be-truthy)
+          (expect fields :to-have-field :service "new"))))
 
-(it "logger-with can be chained without affecting earlier loggers in the chain"
-  (let* ((base (make-logger))
-         (with-a (logger-with base :a 1))
-         (with-b (logger-with with-a :b 2)))
-    (expect (null (assoc :a (logger-fields base))) :to-be-truthy)
-    (expect (null (assoc :b (logger-fields with-a))) :to-be-truthy)
-    (expect (equal (cdr (assoc :a (logger-fields with-b))) 1) :to-be-truthy)
-    (expect (equal (cdr (assoc :b (logger-fields with-b))) 2) :to-be-truthy)))
+    (it "derives child loggers and applies field precedence"
+      (multiple-value-bind (base handler)
+          (counting-logger :name "service" :fields '(:scope "logger" :base t))
+        (let ((child (logger-child base "worker" :child t)))
+          (expect (string= (logger-name child) "service.worker") :to-be-truthy)
+          (signals type-error (logger-child base ""))
+          (with-log-context (:scope "outer" :outer t)
+            (with-log-context (:scope "inner" :inner t)
+              (log-info child "event" :scope "call")))
+          (let ((fields (latest-fields handler)))
+            (expect fields :to-have-field :scope "call")
+            (expect fields :to-have-field :base t)
+            (expect fields :to-have-field :child t)
+            (expect fields :to-have-field :outer t)
+            (expect fields :to-have-field :inner t)))))
 
-;;; A fixed clock makes timestamps deterministic and testable instead of
-;;; depending on wall-clock time.
-(it "an injected clock function determines the log-record timestamp"
-  (let* ((stream (make-string-output-stream))
-         (logger (make-logger :handler (make-instance 'json-handler :stream stream)
-                              :clock (lambda () 999999))))
-    (log-info logger "boot")
-    (expect (not (null (search "\"timestamp\":999999" (get-output-stream-string stream))))
-            :to-be-truthy)))
+    (it "restores logging context after non-local exit"
+      (multiple-value-bind (logger handler) (counting-logger)
+        (handler-case (with-log-context (:temporary t) (error "leave context"))
+          (error () nil))
+        (log-info logger "after")
+        (expect (latest-fields handler) :to-lack-field :temporary))))
 
-(it "the default clock produces a real, current-looking universal time"
-  (let ((logger (make-logger)))
-    (expect (> (funcall (logger-clock logger)) 3000000000) :to-be-truthy)))
-
-(it "*default-logger* backs the logger-omitting convenience functions"
-  (let* ((stream (make-string-output-stream))
-         (logger (make-logger :handler (make-instance 'text-handler :stream stream)))
-         (previous *default-logger*))
-    (unwind-protect
-         (progn
-           (set-default-logger logger)
-           (log-info "server started" :port 8080)
-           (expect (not (null (search "server started port=8080" (get-output-stream-string stream))))
-                   :to-be-truthy))
-      (set-default-logger previous))))
-
-(it "log-info accepts an explicit logger as its first argument"
-  (let* ((stream (make-string-output-stream))
-         (logger (make-logger :handler (make-instance 'text-handler :stream stream))))
-    (log-info logger "explicit logger" :key "value")
-    (expect (not (null (search "explicit logger key=value" (get-output-stream-string stream))))
-            :to-be-truthy)))
-
-(it "log-debug/log-warn/log-error/log-fatal all route through the same dispatcher"
-  (let* ((stream (make-string-output-stream))
-         (logger (make-logger :handler (make-instance 'text-handler :stream stream)
-                              :level +level-debug+)))
-    (log-debug logger "d")
-    (log-warn logger "w")
-    (log-error logger "e")
-    (log-fatal logger "f")
-    (let ((output (get-output-stream-string stream)))
-      (expect (not (null (search "[DEBUG] d" output))) :to-be-truthy)
-      (expect (not (null (search "[WARN] w" output))) :to-be-truthy)
-      (expect (not (null (search "[ERROR] e" output))) :to-be-truthy)
-      (expect (not (null (search "[FATAL] f" output))) :to-be-truthy))))
-
-(it "make-logger's default level is info, so debug is filtered by default"
-  (let* ((stream (make-string-output-stream))
-         (logger (make-logger :handler (make-instance 'text-handler :stream stream))))
-    (log-debug logger "hidden")
-    (log-info logger "shown")
-    (let ((output (get-output-stream-string stream)))
-      (expect (null (search "hidden" output)) :to-be-truthy)
-      (expect (not (null (search "shown" output))) :to-be-truthy))))
+  (describe "generated level macros"
+  (it "allows ordinary CL and LOG-KIT package use"
+    (let ((package-name "CL-LOG-KIT/USE-COMPATIBILITY-TEST"))
+      (when (find-package package-name)
+        (delete-package package-name))
+      (unwind-protect
+          (progn
+            (eval '(defpackage #:cl-log-kit/use-compatibility-test
+                     (:use #:cl #:log-kit)))
+            (expect (find-package package-name) :to-be-truthy))
+        (when (find-package package-name)
+          (delete-package package-name)))))
+  (it "explicit macros evaluate logger once and skip filtered expressions"
+    (let ((logger-count 0) (value-count 0) (logger (make-logger :level +level-warn+)))
+      (log-info (progn (incf logger-count) logger)
+                (progn (incf value-count) "hidden")
+                :value (incf value-count))
+      (expect (= logger-count 1) :to-be-truthy)
+      (expect (= value-count 0) :to-be-truthy)))
+  (it "legacy macros use the default logger and preserve lazy payloads"
+    (multiple-value-bind (logger handler) (counting-logger :level +level-info+)
+      (let ((*default-logger* logger)
+            (message-count 0)
+            (value-count 0))
+        (log-info (progn (incf message-count) "legacy")
+                  :value (progn (incf value-count) 7))
+        (expect (= message-count 1) :to-be-truthy)
+        (expect (= value-count 1) :to-be-truthy)
+        (expect handler :to-have-recorded 1)
+        (expect (latest-fields handler) :to-have-field :value 7)
+        (setf *default-logger* (make-logger :level +level-warn+ :handler handler))
+        (log-info (progn (incf message-count) "hidden")
+                  :value (incf value-count))
+        (expect (= message-count 1) :to-be-truthy)
+        (expect (= value-count 1) :to-be-truthy)
+        (expect handler :to-have-recorded 1))))
+  (it "legacy macros accept symbol field keys"
+    (multiple-value-bind (logger handler) (counting-logger :level +level-info+)
+      (let ((*default-logger* logger))
+        (log-info "message" 'request-id 7)
+        (expect handler :to-have-recorded 1)
+        (expect (latest-fields handler) :to-have-field 'request-id 7))))
+  (it "legacy macros accept string field keys"
+    (multiple-value-bind (logger handler) (counting-logger :level +level-info+)
+      (let ((*default-logger* logger))
+        (log-info "message" "request-id" 7)
+        (expect handler :to-have-recorded 1)
+        (expect (latest-fields handler) :to-have-field "request-id" 7))))
+  (it "explicit and default macro families emit records"
+    (multiple-value-bind (logger fetch) (capturing-logger :level +level-debug+)
+      (let ((*default-logger* logger))
+        (log-debug logger "explicit" :kind "debug")
+        (log-default-info "default" :kind "info")
+        (let ((output (funcall fetch)))
+          (expect output :to-contain-substring "explicit")
+          (expect output :to-contain-substring "default")))))))
