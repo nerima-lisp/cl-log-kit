@@ -3,13 +3,31 @@
 ;;; Bootstrap script: instruments cl-log-kit with SBCL's sb-cover and runs
 ;;; the suite through cl-weave's native coverage gate (RUN-ALL :COVERAGE T),
 ;;; which fails the build if expression/branch coverage regresses below the
-;;; ceiling this branch has already reached. That ceiling is not 100%: every
-;;; remaining gap is a confirmed sb-cover/SBCL instrumentation artifact
-;;; (constant-folded &key defaults, load-time-only defclass/defconstant
-;;; forms, defmacro bodies) or code unreachable by construction (an &rest
-;;; parameter can never be bound to an improper list) — see CHANGELOG.md for
-;;; the line-by-line audit. Raising *COVERAGE-MINIMUM-* below requires new
-;;; evidence there, not a quiet edit here.
+;;; ceiling this branch has already reached.
+;;;
+;;; 100% is not the target, and is not achievable on this toolchain: every
+;;; remaining gap is either a declarative form with no runtime execution
+;;; model for sb-cover to observe (DEFCONSTANT, DEFCLASS/DEFSTRUCT slot
+;;; lists, DEFPACKAGE export lists, IN-PACKAGE) or a DEFMACRO body, which
+;;; runs only at macroexpansion time and is invisible to sb-cover's runtime
+;;; STORE-COVERAGE-DATA instrumentation by construction — confirmed by
+;;; direct experiment, not assumption (see CHANGELOG.md). The second
+;;; category is in direct, structural tension with writing more of this
+;;; library's logic as DEFMACRO bodies: the more behavior a macro's
+;;; generative template owns rather than the ordinary functions/methods it
+;;; emits, the less of that behavior sb-cover can measure at all. Every
+;;; macro in this codebase is therefore restricted to behavioral codegen
+;;; (DEFHANDLE/DEFFLUSH/DEFCLOSE, DEFINE-LOG-LEVEL-MACROS,
+;;; DEFINE-STREAM-HANDLER-CONSTRUCTORS, CHECK-TYPES) — it emits ordinary,
+;;; independently-testable functions rather than embedding runtime logic in
+;;; the macro body itself, which is what keeps the measurable-code ceiling
+;;; as high as it is. Converting DEFCONSTANT/DEFCLASS/DEFPACKAGE to runtime
+;;; function calls purely to satisfy sb-cover was evaluated and rejected: it
+;;; would regress idiom, readability, and (for the level constants) the
+;;; compile-time substitution the whole design relies on, in exchange for a
+;;; metric that would no longer measure anything meaningful. Raising
+;;; *COVERAGE-MINIMUM-* below requires new evidence of closeable gaps in
+;;; CHANGELOG.md, not a quiet edit here.
 ;;; Usage: sbcl --script run-coverage.lisp
 (require :asdf)
 (require :sb-cover)
@@ -31,12 +49,17 @@
     (asdf:initialize-source-registry)))
 
 ;; The exact aggregate achieved as of the last full per-span coverage audit
-;; (CHANGELOG.md, "Unreleased/Internal") is 95.44% expression / 98.21%
-;; branch across src/. These floors sit just below that so ordinary
-;; floating-point/platform variance in sb-cover's own accounting cannot
-;; trip the gate spuriously, while still catching any real regression.
-(defparameter *coverage-minimum-expression* 95.0)
-(defparameter *coverage-minimum-branch* 98.0)
+;; (CHANGELOG.md, 1.5.0) is 96.23% expression / 98.63% branch across src/.
+;; processor-handler.lisp, rotating-file-handler.lisp, and
+;; buffered-handler.lisp each have exactly one uncovered span beyond their
+;; own IN-PACKAGE form — a DEFCLASS slot list — the same declarative,
+;; no-runtime-execution-model category already carved out project-wide;
+;; every function, method, and macro expansion in all three files is fully
+;; exercised. These floors sit just below the actual aggregate so ordinary
+;; floating-point/platform variance in sb-cover's own accounting cannot trip
+;; the gate spuriously, while still catching any real regression.
+(defparameter *coverage-minimum-expression* 96.1)
+(defparameter *coverage-minimum-branch* 98.5)
 
 (let* ((root (script-directory))
        (src-dir (merge-pathnames #P"src/" root))
