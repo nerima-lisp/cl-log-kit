@@ -10,7 +10,10 @@
 (defclass multi-handler (close-managed-handler)
   ((handlers :initarg :handlers :reader %multi-handler-handlers)
    (error-policy :initarg :error-policy :initform :signal :reader %composition-error-policy)
-   (error-callback :initarg :error-callback :initform nil :reader %composition-error-callback)))
+   (error-callback :initarg :error-callback :initform nil :reader %composition-error-callback))
+  (:documentation "Fans a record out to every child handler in HANDLERS,
+applying ERROR-POLICY (:SIGNAL, :CONTINUE, or :CALLBACK) when a child
+signals. See MAKE-MULTI-HANDLER."))
 
 (defmethod initialize-instance :after ((instance multi-handler) &key (handlers (%constant-default nil))
                                        (error-policy (%constant-default :signal)) error-callback)
@@ -24,6 +27,11 @@
   (setf (slot-value instance 'handlers) (copy-list handlers)))
 
 (defun make-multi-handler (handlers &key (error-policy (%constant-default :signal)) error-callback)
+  "Build a handler that forwards every record to each handler in HANDLERS (a
+proper list with no duplicates). ERROR-POLICY governs what happens when a
+child signals: :SIGNAL (the default) re-signals after every remaining child
+has been tried; :CONTINUE swallows the error; :CALLBACK calls
+ERROR-CALLBACK with (OPERATION TARGET CONDITION)."
   (make-instance 'multi-handler :handlers handlers :error-policy error-policy
                                 :error-callback error-callback))
 
@@ -74,7 +82,9 @@ close for the rest."
 
 (defclass filter-handler (close-managed-handler)
   ((target :initarg :target :reader %filter-handler-target)
-   (predicate :initarg :predicate :reader %filter-handler-predicate)))
+   (predicate :initarg :predicate :reader %filter-handler-predicate))
+  (:documentation "Forwards a record to TARGET only when PREDICATE returns
+true of it. See MAKE-FILTER-HANDLER."))
 
 (defmethod initialize-instance :after ((instance filter-handler) &key target predicate)
   (declare (ignore instance))
@@ -82,6 +92,8 @@ close for the rest."
   (check-type predicate function))
 
 (defun make-filter-handler (target predicate)
+  "Build a handler that forwards a record to TARGET only when (FUNCALL
+PREDICATE RECORD) is true."
   (make-instance 'filter-handler :target target :predicate predicate))
 
 (defhandle filter-handler (handler record)
@@ -97,7 +109,9 @@ close for the rest."
 (defclass function-handler (close-managed-handler)
   ((handle-function :initarg :handle-function :reader %function-handler-handle)
    (flush-function :initarg :flush-function :initform nil :reader %function-handler-flush)
-   (close-function :initarg :close-function :initform nil :reader %function-handler-close)))
+   (close-function :initarg :close-function :initform nil :reader %function-handler-close))
+  (:documentation "Adapts a plain closure to the handler protocol: each
+record is handed to HANDLE-FUNCTION. See MAKE-FUNCTION-HANDLER."))
 
 (defmethod initialize-instance :after ((instance function-handler) &key handle-function
                                        flush-function close-function)
@@ -107,6 +121,10 @@ close for the rest."
   (when close-function (check-type close-function function)))
 
 (defun make-function-handler (handle-function &key flush-function close-function)
+  "Build a handler that calls (FUNCALL HANDLE-FUNCTION RECORD) for every
+record. FLUSH-FUNCTION and CLOSE-FUNCTION, if supplied, are called with no
+arguments by FLUSH-HANDLER and CLOSE-HANDLER respectively; omitted, those
+operations are no-ops."
   (make-instance 'function-handler :handle-function handle-function :flush-function flush-function
                                    :close-function close-function))
 
@@ -121,9 +139,12 @@ close for the rest."
   (when (%function-handler-close handler)
     (funcall (%function-handler-close handler))))
 
-(defclass null-handler (handler) ())
+(defclass null-handler (handler)
+  ()
+  (:documentation "Discards every record. See MAKE-NULL-HANDLER."))
 
 (defun make-null-handler ()
+  "Build a handler that discards every record it receives."
   (make-instance 'null-handler))
 
 (defmethod handle-log-record ((handler null-handler) record)
@@ -140,6 +161,9 @@ written once, and each generated function is a plain, directly testable defun."
              collect `(defun ,constructor (&key (stream (%constant-default *standard-output*))
                                                  (auto-flush (%constant-default t))
                                                  (owns-stream (%constant-default nil)))
+                        ,(format nil "Build a ~(~A~) writing to STREAM (default *STANDARD-OUTPUT*).
+When AUTO-FLUSH is true (the default), STREAM is flushed after every write.
+When OWNS-STREAM is true, CLOSE-HANDLER also closes STREAM." class)
                         (make-instance (quote ,class) :stream stream :auto-flush auto-flush
                                        :owns-stream owns-stream)))))
 
@@ -172,6 +196,7 @@ whether BODY returns normally or unwinds."
        (close-handler ,variable))))
 
 (defun flush-logger (logger)
+  "Flush LOGGER's handler and return LOGGER."
   (check-type logger logger)
   (flush-handler (logger-handler logger))
   logger)

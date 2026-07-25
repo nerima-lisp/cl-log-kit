@@ -3,20 +3,31 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # paredit-cli is a dev-lint input of the nerima-lisp packages below, whose
-    # flakes still point at the pre-move github:takeokunn/paredit-cli URL. It
-    # never reaches cl-log-kit's CL_SOURCE_REGISTRY, but pin every transitive
-    # copy to the current github:nerima-lisp org so this lock carries no
-    # takeokunn references.
+    # paredit-cli is both a dev-lint input of the nerima-lisp packages below
+    # (whose flakes still point at the pre-move github:takeokunn/paredit-cli
+    # URL, so every transitive copy is pinned to the current
+    # github:nerima-lisp org here to keep this lock free of takeokunn
+    # references) and the structural-refactoring CLI this repository's own
+    # contributors use. Its Lisp-source flakes never reach cl-log-kit's
+    # CL_SOURCE_REGISTRY (it is a standalone Rust binary, not an ASDF
+    # system), but the binary itself is exposed in devShells.default below.
     paredit-cli = {
       url = "github:nerima-lisp/paredit-cli";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Pinned to the tag matching cl-log-kit.asd's (:version "cl-weave"
+    # "1.0.0") floor on the cl-log-kit/test system: without an explicit ref
+    # here, `nix flake update` would float this input onto the default
+    # branch and could silently drop below the version the .asd requires.
+    # Bump this ref in lockstep with any future :version bump in the .asd.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave";
+      url = "github:nerima-lisp/cl-weave/v1.0.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.paredit-cli.follows = "paredit-cli";
     };
+    # Dev tooling only (run-ci.lisp's timeout enforcement): not declared as
+    # a dependency of either ASDF system, so it deliberately tracks the
+    # default branch rather than a version-matched tag.
     cl-process-kit = {
       url = "github:nerima-lisp/cl-process-kit";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,9 +35,11 @@
     };
     # Test-only: an independent JSON parser the json-handler specs use to
     # assert emitted output parses back to the expected structure. Not a
-    # dependency of the shipped cl-log-kit system.
+    # dependency of the shipped cl-log-kit system. Pinned to the tag
+    # matching cl-log-kit.asd's (:version "cl-json-kit" "1.0.0") floor on
+    # the cl-log-kit/test system, for the same reason as cl-weave above.
     cl-json-kit = {
-      url = "github:nerima-lisp/cl-json-kit";
+      url = "github:nerima-lisp/cl-json-kit/v1.0.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-weave.inputs.paredit-cli.follows = "paredit-cli";
     };
@@ -36,6 +49,7 @@
     {
       self,
       nixpkgs,
+      paredit-cli,
       cl-weave,
       cl-process-kit,
       cl-json-kit,
@@ -64,7 +78,7 @@
         pkgs:
         pkgs.stdenvNoCC.mkDerivation {
           pname = "cl-log-kit-docs";
-          version = "1.6.0";
+          version = "2.0.0";
           src = pkgs.lib.fileset.toSource {
             root = ./docs;
             fileset = pkgs.lib.fileset.unions [
@@ -95,7 +109,7 @@
         rec {
           cl-log-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "1.6.0";
+            version = "2.0.0";
             src = self;
             systems = [ "cl-log-kit" ];
           };
@@ -169,6 +183,7 @@
           default = pkgs.mkShell {
             packages = [
               pkgs.sbcl
+              paredit-cli.packages.${system}.default
             ];
             CL_SOURCE_REGISTRY = sourceRegistry;
           };

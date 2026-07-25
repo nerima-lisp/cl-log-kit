@@ -12,7 +12,9 @@ Logger and call-site fields are property lists:
 Keys must be symbols or strings. Property lists must be finite, proper, and
 contain an even number of elements — a circular or dotted list signals
 `invalid-log-fields` in bounded time rather than looping or erroring
-obscurely.
+obscurely. Length is bounded too: a plist of more than 16,384 pairs signals
+`log-resource-limit-exceeded` (see [Resource limits](#resource-limits)),
+not `invalid-log-fields`.
 
 Field names are canonicalized case-insensitively (a symbol's `symbol-name`,
 or a string as-is, downcased) before comparison. Duplicate keys after
@@ -28,9 +30,12 @@ described in [Handlers](handlers.md#json). Every public accessor
 `json-array-elements`, …) returns a fresh copy, so a caller that later
 mutates a value it passed in — or a value it read back out — can never
 change what a record or logger holds. Cyclic values signal
-`invalid-log-fields` instead of recursing indefinitely; the cycle check is
-Floyd's tortoise-and-hare, so it runs in bounded time even on a hostile
-self-referential input.
+`invalid-log-fields` instead of recursing indefinitely: the snapshot walk
+marks each container it is currently copying in an `eq` table, so a value
+that reaches itself is rejected rather than followed. The list-shape checks
+that run before the walk — plist properness, JSON object member and array
+element lists — use Floyd's tortoise-and-hare instead, so a circular list
+is rejected in bounded time without being traversed.
 
 ## Condition details
 
@@ -52,7 +57,7 @@ huge field value cannot exhaust memory or overflow the stack:
 | Nesting depth | 64 |
 | Visited nodes | 65,536 |
 | Characters per string | 1,048,576 |
-| Array elements / object members | 16,384 |
+| Array elements / object members / hash-table entries | 16,384 |
 
 Exceeding any of these signals `log-resource-limit-exceeded`. Its
 `log-resource-limit-resource` reader identifies which bound failed —

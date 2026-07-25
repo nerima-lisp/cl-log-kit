@@ -6,6 +6,33 @@ from [Testing and Coverage](testing.md#coverage-gate) — lives in
 at the repository root. It is not duplicated here so the two copies cannot
 drift; this page is a short pointer plus the release headlines.
 
+## 2.0.0 — 2026-07-25
+
+- **Breaking:** `log-debug`/`log-info`/`log-warn`/`log-error`/`log-fatal`
+  always evaluate their first argument as the logger now; the old
+  parity-based guess that silently fell back to `*default-logger*` for a
+  message-first call is gone. Use `log-default-*` explicitly for that case.
+  See [Logger Derivation and Context](context.md) and the `## [2.0.0]`
+  section of `CHANGELOG.md`.
+- Added: every one of the 101 exported `log-kit` symbols now has a
+  docstring (81 previously had none), and the README's "Production
+  readiness" section states that claim, and others, as checkable facts.
+
+## 1.7.0 — 2026-07-25
+
+- Coverage: closed every genuinely reachable coverage gap (bignum encoding,
+  logger initarg validation, BOM/line-separator/surrogate/non-ASCII escape
+  branches in both wire formats, non-keyword JSON keys, and the
+  non-simple-string branch in both encoders), reaching a new best-recorded
+  aggregate of 96.32% expression / 98.77% branch. Confirmed zero dead code
+  via a full `paredit inspect unused-definitions` audit.
+- Internal: split the shared wire-encoding primitives out of `handler.lisp`
+  into their own `encoding.lisp` file.
+- Changed: raised the test system's dependency floors to `cl-weave` `1.0.0`
+  and `cl-json-kit` `1.0.0` (both now stable releases) and exposed the
+  `paredit-cli` binary in the `nix develop` shell. See the `## [1.7.0]`
+  section of `CHANGELOG.md`.
+
 ## 1.6.0 — 2026-07-25
 
 - Performance: drove `handle-log-record` to **zero per-call allocation** on

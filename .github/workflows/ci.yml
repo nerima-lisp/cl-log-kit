@@ -12,6 +12,12 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Every command this project runs enforces its own timeout (run-ci.lisp
+    # wraps the test/coverage scripts via cl-process-kit; this bounds the
+    # whole job — checkout, Nix install, and `nix flake check` together —
+    # so a hang anywhere in the pipeline still fails fast instead of running
+    # to GitHub's default 360-minute ceiling. Matches docs.yml's precedent.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v17

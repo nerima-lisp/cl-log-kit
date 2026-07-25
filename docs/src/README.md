@@ -48,7 +48,8 @@ with duplicate output paths.
     ---
 
     Text and JSON output, composition with `multi-handler` and
-    `filter-handler`, and the handler lifecycle protocol.
+    `filter-handler`, file rotation and trigger-based buffering, and the
+    handler lifecycle protocol.
 
     [:octicons-arrow-right-24: Handlers](handlers.md)
 
@@ -66,7 +67,7 @@ with duplicate output paths.
 
 ## Status
 
-Version 1.x. `cl-log-kit` is a small, stable surface — see the
+Version 2.0.0. `cl-log-kit` is a small, stable surface — see the
 [API Reference](api-reference.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
 suite documented in [Testing and Coverage](testing.md):
@@ -74,10 +75,12 @@ suite documented in [Testing and Coverage](testing.md):
 - `make-logger` / `logger-with` / `derive-logger` / `logger-child` for
   building and deriving structured loggers
 - explicit-logger logging macros (`log-debug`, `log-info`, `log-warn`,
-  `log-error`, `log-fatal`) and their `log-default-*` counterparts against
-  `*default-logger*`
+  `log-error`, `log-fatal`), which always take the logger as their first
+  argument, and their `log-default-*` counterparts against `*default-logger*`
 - `with-default-logger` for a dynamically scoped default logger
-- `with-log-context` for dynamically scoped fields shared across a call stack
+- `with-log-context` for dynamically scoped fields shared across a call
+  stack, plus `capture-log-context` / `with-captured-log-context` for
+  carrying that context into a new thread
 - five built-in severity levels (`DEBUG` < `INFO` < `WARN` < `ERROR` <
   `FATAL`) plus arbitrary integer custom levels
 - level-gated macros that skip message/field evaluation, clock access, and
@@ -93,9 +96,12 @@ suite documented in [Testing and Coverage](testing.md):
   `+json-false+`) so field encoding is never guessed from Lisp types
 - `multi-handler`, `filter-handler`, `function-handler`, and `null-handler`
   for composing and adapting handlers
+- `processor-handler` for per-record enrichment, `rotating-file-handler` for
+  clock-driven file rotation with retention pruning, and `buffered-handler`
+  for holding records back until a trigger-level record arrives
 - an extensible handler lifecycle protocol (`handler-open-p`,
-  `flush-handler`, `close-handler`, `with-handler`) with atomic
-  handle/flush/close admission
+  `flush-handler`, `close-handler`, `with-handler`, `flush-logger`) with
+  atomic handle/flush/close admission
 - `condition-fields` / `log-condition` for turning Lisp conditions into
   structured `:condition-type` / `:condition-message` / `:backtrace` fields
 - `with-log-span` for paired `:start` / `:end` records with duration,

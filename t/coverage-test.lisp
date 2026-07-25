@@ -42,7 +42,48 @@
         (expect output :to-contain-substring "field.\"char\"=\"A\"")
         (expect output :to-contain-substring "field.\"ratio\"=\"3/4\"")
         (expect output :to-contain-substring "i)")
-        (expect output :to-contain-substring "field.\"kw\"=\"active\""))))
+        (expect output :to-contain-substring "field.\"kw\"=\"active\"")))
+
+    (it "escapes a zero-width-no-break-space (BOM) as a spoof character"
+      (let ((output (render-through
+                      'text-handler
+                      (make-test-record :fields (list :bom (string (code-char #xFEFF)))))))
+        (expect output :to-contain-substring "\\uFEFF")))
+
+    (it "escapes U+2028/U+2029 line separators and a lone surrogate code point"
+      (dolist (spec (list (cons #x2028 "\\u2028") (cons #x2029 "\\u2029") (cons #xD800 "\\uD800")))
+        (let ((output (render-through
+                        'text-handler
+                        (make-test-record :fields (list :v (string (code-char (car spec))))))))
+          (expect output :to-contain-substring (cdr spec)))))
+
+    (it "passes an ordinary non-ASCII character through unescaped"
+      ;; A plain accented letter is non-printable-ASCII but matches none of
+      ;; the control/surrogate/spoof escape conditions, so it must render
+      ;; as-is rather than as a \uXXXX escape.
+      (let ((output (render-through
+                      'text-handler
+                      (make-test-record :fields (list :v (string (code-char #xE9)))))))
+        (expect output :to-contain-substring (string (code-char #xE9)))
+        (expect (not (search "\\u00E9" output :test #'char-equal)) :to-be-truthy)))
+
+    (it "renders a non-simple string value through the same escaping path"
+      ;; Every field value is normally COPY-SEQ'd into a simple string by the
+      ;; snapshot layer before a handler ever sees it, so this calls the
+      ;; encoder directly to exercise its own non-simple-string branch.
+      (let* ((source "needs escaping \" and plain")
+             (non-simple (make-array (length source) :element-type 'character
+                                                      :adjustable t :fill-pointer (length source)
+                                                      :initial-contents source))
+             (output (with-output-to-string (stream)
+                       (log-kit::%write-text-value non-simple stream))))
+        (expect output :to-contain-substring "\\\"")
+        (expect output :to-contain-substring "plain")))
+
+    (it "writes a bignum field value via the printer fallback"
+      (let ((bignum (expt 2 100)))
+        (expect (render-through 'text-handler (make-test-record :fields (list :big bignum)))
+                :to-contain-substring (princ-to-string bignum)))))
 
   (describe "json value types"
     (it "escapes control and reserved characters in json strings"
@@ -50,10 +91,18 @@
                       'json-handler
                       (make-test-record
                         :fields (list :s (coerce (list #\" #\\ #\Backspace #\Page
-                                                       #\Newline #\Return #\Tab (code-char 1))
+                                                       #\Newline #\Return #\Tab
+                                                       (code-char 1) (code-char 127))
                                                  'string))))))
-        (dolist (escape '("\\\"" "\\\\" "\\b" "\\f" "\\n" "\\r" "\\t" "\\u0001"))
+        (dolist (escape '("\\\"" "\\\\" "\\b" "\\f" "\\n" "\\r" "\\t" "\\u0001" "\\u007F"))
           (expect output :to-contain-substring escape))))
+
+    (it "passes an ordinary non-ASCII character through unescaped"
+      (let ((output (render-through
+                      'json-handler
+                      (make-test-record :fields (list :v (string (code-char #xE9)))))))
+        (expect output :to-contain-substring (string (code-char #xE9)))
+        (expect (not (search "\\u00E9" output :test #'char-equal)) :to-be-truthy)))
 
     (it "encodes bare integer, float, symbol, and boolean field values"
       (let ((output (render-through
@@ -66,7 +115,30 @@
         (expect output :to-contain-substring "\"yes\":true")))
 
     (it "rejects non-finite json floats"
-      (signals unsupported-json-value (render-json-value sb-ext:double-float-positive-infinity))))
+      (signals unsupported-json-value (render-json-value sb-ext:double-float-positive-infinity)))
+
+    (it "renders a non-keyword symbol used as a raw json field key"
+      (let ((output (render-through 'json-handler
+                                    (make-test-record :fields (list 'plain-key "v")))))
+        (expect output :to-contain-substring "\"plain-key\":\"v\"")))
+
+    (it "renders a non-simple json string through the same validation and write path"
+      ;; As above: bypass the snapshot layer's COPY-SEQ so the non-simple
+      ;; branch in both %VALIDATE-JSON-STRING and %WRITE-JSON-STRING runs.
+      (let* ((source "needs escaping \" and plain")
+             (non-simple (make-array (length source) :element-type 'character
+                                                      :adjustable t :fill-pointer (length source)
+                                                      :initial-contents source)))
+        (expect (log-kit::%validate-json-string non-simple) :to-be-truthy)
+        (let ((output (with-output-to-string (stream)
+                        (log-kit::%write-json-string non-simple stream))))
+          (expect output :to-contain-substring "\\\"")
+          (expect output :to-contain-substring "plain"))))
+
+    (it "writes a bignum field value via the printer fallback"
+      (let ((bignum (expt 2 100)))
+        (expect (render-through 'json-handler (make-test-record :fields (list :big bignum)))
+                :to-contain-substring (princ-to-string bignum)))))
 
   (describe "structured field validation"
     (it "snapshots multi-dimensional arrays by value"
@@ -95,6 +167,9 @@
     (it "logger-child rejects malformed name elements"
       (dolist (bad '("" ".lead" "trail." "a..b"))
         (signals type-error (logger-child (make-logger) bad))))
+
+    (it "%validate-logger-initargs rejects an improper initarg list"
+      (signals program-error (log-kit::%validate-logger-initargs (list* :name "x" :level))))
 
     (it "set-default-logger installs the global default"
       (let ((saved *default-logger*))

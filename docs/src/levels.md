@@ -31,10 +31,10 @@ values is rendered numerically instead of by name.
 
 ## Level-gated evaluation
 
-Every logging macro (`log-debug`, `log-info`, `log-warn`, `log-error`,
-`log-fatal`, the `log-default-*` family, `log-condition`, and
-`with-log-span`) tests the level **before** evaluating anything else. A
-filtered call:
+Every logging macro (`log`, `log-default`, `log-debug`, `log-info`,
+`log-warn`, `log-error`, `log-fatal`, the `log-default-*` family,
+`log-condition`, and `with-log-span`) tests the level **before** evaluating
+anything else. A filtered call:
 
 - never evaluates the message form
 - never evaluates the field-list forms
@@ -45,13 +45,19 @@ This means it is safe to pass expensive expressions to a log call that might
 be filtered out — a `log-debug` call in a production logger set to
 `+level-info+` costs one integer comparison, nothing more.
 
-The logger expression itself in an explicit call (e.g. `*logger*` in
-`(log-info *logger* ...)`) is still evaluated exactly once, regardless of
-whether the level is enabled — so it is safe to pass a form with side
-effects there, but not necessary or expected.
-
 ```lisp
 (log-debug *logger* (expensive-computation) :detail (build-large-plist))
 ;; expensive-computation and build-large-plist are never called
 ;; when *logger*'s level is above DEBUG.
 ```
+
+`log-debug`, `log-info`, `log-warn`, `log-error`, and `log-fatal` always
+take the logger as their first argument; use the `log-default-*` family to
+log through `*default-logger*` instead. That logger form — and the level
+form of `log`/`log-default` — is evaluated exactly once regardless of
+whether the level is enabled, so a form with side effects there is safe but
+neither necessary nor expected.
+
+`emit-log` is a function, not a macro: it performs the same level check, but
+its message and field arguments are evaluated before the call, filtered or
+not.

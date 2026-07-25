@@ -18,11 +18,26 @@
 
 (defclass logger ()
   ((name :initarg :name :reader %logger-name :initform "root")
-   (handler :initarg :handler :reader logger-handler)
-   (level :initarg :level :reader logger-level :initform +level-info+)
+   (handler :initarg :handler :reader logger-handler
+            :documentation "The handler every log call on this logger emits through.")
+   (level :initarg :level :reader logger-level :initform +level-info+
+          :documentation "The minimum level rank this logger emits; see LOG-ENABLED-P.")
    (fields :initarg :fields :reader %logger-fields :initform nil)
-   (clock :initarg :clock :reader logger-clock :initform #'%unix-time))
+   (clock :initarg :clock :reader logger-clock :initform #'%unix-time
+          :documentation "A zero-argument function returning the timestamp for records
+this logger emits."))
   (:documentation "Logging configuration and immutable contextual fields."))
+
+;;; DEFCLASS's per-slot :DOCUMENTATION only reaches MOP slot introspection,
+;;; not (DOCUMENTATION #'READER 'FUNCTION); set the latter explicitly so the
+;;; reader generic functions answer DOCUMENTATION too.
+(setf (documentation 'logger-handler 'function)
+      "The handler every log call on this logger emits through.")
+(setf (documentation 'logger-level 'function)
+      "The minimum level rank this logger emits; see LOG-ENABLED-P.")
+(setf (documentation 'logger-clock 'function)
+      "A zero-argument function returning the timestamp for records this
+logger emits.")
 
 (defun %validate-logger-initargs (initargs)
   (unless (%proper-list-p initargs)
@@ -44,14 +59,20 @@
                     :clock clock))
 
 (defun logger-name (logger)
+  "A fresh copy of LOGGER's dotted name."
   (copy-seq (%logger-name logger)))
 
 (defun logger-fields (logger)
+  "A fresh, recursively copied alist of LOGGER's contextual fields."
   (%copy-field-alist (%logger-fields logger)))
 
 (defun make-logger (&key (name (%constant-default "root")) (handler (%constant-default (make-instance 'text-handler)))
                     (level (%constant-default +level-info+)) (fields (%constant-default nil))
                     (clock (%constant-default #'%unix-time)))
+  "Build a LOGGER named NAME (default \"root\"), emitting through HANDLER
+(default a fresh TEXT-HANDLER on *STANDARD-OUTPUT*) at or above LEVEL
+(default +LEVEL-INFO+), with contextual FIELDS (a plist) attached to every
+record it emits, timestamped by CLOCK (default Unix seconds)."
   (make-instance 'logger :name name :handler handler :level level :fields fields :clock clock))
 
 (defun %make-logger-from-snapshot (name handler level fields clock)
@@ -73,6 +94,9 @@ did not already claim."
     (nreverse result)))
 
 (defun logger-with (logger &rest fields)
+  "Return a new logger like LOGGER but with FIELDS (a plist) merged over its
+existing contextual fields, call-site fields winning at the same canonical
+key. LOGGER itself is unchanged."
   (check-type logger logger)
   (%make-logger-from-snapshot (%logger-name logger) (logger-handler logger) (logger-level logger)
                               (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
@@ -81,6 +105,10 @@ did not already claim."
 (defun derive-logger (logger &key (name (%constant-default nil) name-p) (handler (%constant-default nil) handler-p)
                       (level (%constant-default nil) level-p) (fields (%constant-default nil) fields-p)
                       (clock (%constant-default nil) clock-p))
+  "Return a new logger like LOGGER, with each supplied keyword argument
+overriding the corresponding slot; an omitted keyword keeps LOGGER's
+existing value. FIELDS, when supplied, is merged over LOGGER's fields
+(call-site fields winning) rather than replacing them outright."
   (check-type logger logger)
   (let ((derived-name (if name-p name (%logger-name logger)))
         (derived-handler (if handler-p handler (logger-handler logger)))
@@ -103,6 +131,10 @@ did not already claim."
        (null (search ".." name))))
 
 (defun logger-child (logger child-name &rest fields)
+  "Return a new logger named LOGGER's name with \".\" and CHILD-NAME appended
+(e.g. \"service\" + \"worker\" -> \"service.worker\"), with FIELDS (a plist)
+merged over LOGGER's contextual fields. CHILD-NAME must be non-empty and
+neither start, end with, nor contain a run of \".\"."
   (check-type logger logger)
   (unless (%valid-logger-name-element-p child-name)
     (error 'type-error :datum child-name
@@ -124,5 +156,7 @@ scope) picks them up until BODY returns."
   "The dynamically scoped logger used by LOG-DEFAULT-* convenience macros.")
 
 (defun set-default-logger (logger)
+  "Replace the process-wide *DEFAULT-LOGGER* with LOGGER and return it. For a
+dynamically scoped replacement instead, use WITH-DEFAULT-LOGGER."
   (check-type logger logger)
   (setf *default-logger* logger))

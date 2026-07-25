@@ -48,18 +48,42 @@
     (setf (uiop:getenv "CL_SOURCE_REGISTRY") combined)
     (asdf:initialize-source-registry)))
 
-;; The exact aggregate achieved as of the last full per-span coverage audit
-;; (CHANGELOG.md, 1.5.0) is 96.23% expression / 98.63% branch across src/.
-;; processor-handler.lisp, rotating-file-handler.lisp, and
-;; buffered-handler.lisp each have exactly one uncovered span beyond their
-;; own IN-PACKAGE form — a DEFCLASS slot list — the same declarative,
-;; no-runtime-execution-model category already carved out project-wide;
-;; every function, method, and macro expansion in all three files is fully
-;; exercised. These floors sit just below the actual aggregate so ordinary
+;; The exact aggregate achieved as of the 1.7.0 audit (CHANGELOG.md) is
+;; 96.32% expression / 98.77% branch across src/, closing every genuinely
+;; reachable gap found by direct inspection of the per-span coverage HTML:
+;; the bignum fallback in %WRITE-INTEGER, %VALIDATE-LOGGER-INITARGS's
+;; improper-list guard, the BOM/LS/PS/lone-surrogate escape branches and the
+;; plain-non-ASCII passthrough branch in both wire formats, a non-keyword
+;; symbol used as a raw JSON key, and the non-simple-string branch in both
+;; encoders (reachable only by calling the encoder directly, since every
+;; field value is normally COPY-SEQ'd into a simple string by the snapshot
+;; layer before any handler sees it — see t/coverage-test.lisp). Every
+;; remaining uncovered span is the same declarative, no-runtime-execution-
+;; model category already carved out project-wide (DEFCONSTANT,
+;; DEFCLASS/DEFSTRUCT slot lists, DEFPACKAGE export lists, IN-PACKAGE, and
+;; DEFMACRO/DEFINE-CONDITION bodies).
+;;
+;; Extracting rotating-file-handler.lisp's three repeated
+;; (SB-THREAD:WITH-MUTEX ((%ROTATING-HANDLER-LOCK HANDLER)) ...) call sites
+;; into the %CALL-WITH-ROTATING-HANDLER-LOCK/WITH-ROTATING-HANDLER-LOCK CPS
+;; pair (matching WITH-BOUNDED-OUTPUT/WITH-SNAPSHOT-OBJECT's existing idiom)
+;; moved that logic behind one more DEFMACRO body, costing the expression
+;; floor its own small, unavoidable share of the declarative-overhead
+;; category above — 96.19% was the true aggregate at that point.
+;;
+;; Giving every one of the 101 exported LOG-KIT symbols a docstring (2.0.0;
+;; previously 81 had none) added a large, one-time expression-coverage cost
+;; with zero behavioral coverage lost: covered-expression count is unchanged
+;; (2887 both before and after) while total expression count rose from 3000
+;; to 3073, because a DEFUN/DEFMACRO/DEFCLASS/DEFSTRUCT docstring is a data
+;; literal in the same declarative, no-runtime-execution-model category as
+;; DEFCONSTANT and DEFPACKAGE export lists above — sb-cover counts it as an
+;; expression but can never observe it "executing." 93.95% is the new true
+;; aggregate. These floors sit just below the actual aggregate so ordinary
 ;; floating-point/platform variance in sb-cover's own accounting cannot trip
 ;; the gate spuriously, while still catching any real regression.
-(defparameter *coverage-minimum-expression* 96.1)
-(defparameter *coverage-minimum-branch* 98.5)
+(defparameter *coverage-minimum-expression* 93.85)
+(defparameter *coverage-minimum-branch* 98.7)
 
 (let* ((root (script-directory))
        (src-dir (merge-pathnames #P"src/" root))

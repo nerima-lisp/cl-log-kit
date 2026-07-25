@@ -9,15 +9,16 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1784951832,
-        "narHash": "sha256-22NDaazfq1GWfmWdi20dwpkBnzd0hRlIPSX+wqRZnwc=",
+        "lastModified": 1784983583,
+        "narHash": "sha256-e2Y1Ajgtbqnv4xBCtTUdL0gCxlyJyNb3XQzyJsuyR0I=",
         "owner": "nerima-lisp",
         "repo": "cl-json-kit",
-        "rev": "a666449395bd72950fd9438e464a0d1390d43232",
+        "rev": "62a3164ab812badf7dcbf94f4b4e4eda2ecd5fb1",
         "type": "github"
       },
       "original": {
         "owner": "nerima-lisp",
+        "ref": "v1.0.0",
         "repo": "cl-json-kit",
         "type": "github"
       }
@@ -54,16 +55,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1784866842,
-        "narHash": "sha256-uFdqahTn9aTgFYnV8tkY5CLI53EGxSZGXjW6Ky1NgXY=",
+        "lastModified": 1784975289,
+        "narHash": "sha256-Je74eEojj79RuBQpVF8vSygjlSEhjnmMq8abgyB4sGc=",
         "owner": "nerima-lisp",
         "repo": "cl-weave",
-        "rev": "7ddc1a283878878a58ec90ab6d4742be86868ba8",
+        "rev": "41020b897003fc1e3097cd62643f83ee8334c3be",
         "type": "github"
       },
       "original": {
         "owner": "nerima-lisp",
-        "ref": "v0.10.0",
+        "ref": "v1.0.0",
         "repo": "cl-weave",
         "type": "github"
       }
@@ -103,15 +104,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1784952361,
-        "narHash": "sha256-SdLeK85XeO5Y0aD7Gx35wX522zB44ee88xCMlWmeO1U=",
+        "lastModified": 1784975289,
+        "narHash": "sha256-Je74eEojj79RuBQpVF8vSygjlSEhjnmMq8abgyB4sGc=",
         "owner": "nerima-lisp",
         "repo": "cl-weave",
-        "rev": "fc41b5319501ab5230ad1c0aeda49f493f5cf42a",
+        "rev": "41020b897003fc1e3097cd62643f83ee8334c3be",
         "type": "github"
       },
       "original": {
         "owner": "nerima-lisp",
+        "ref": "v1.0.0",
         "repo": "cl-weave",
         "type": "github"
       }
@@ -141,11 +143,11 @@
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
-        "lastModified": 1784862675,
-        "narHash": "sha256-KfxEsl6TSDZwFhIyA2QP3BX+jLw6qJWEz/uMPDkYnKI=",
+        "lastModified": 1784977300,
+        "narHash": "sha256-edlX2EkanXV4tOS0Ncww/mzlJF2MBtBiXOk6ThzOiHg=",
         "owner": "nerima-lisp",
         "repo": "paredit-cli",
-        "rev": "e321bbac6d25b181eaf286697d9761cc3e874091",
+        "rev": "c3a9079c79a1679c76335f3b00ea91881d30b10b",
         "type": "github"
       },
       "original": {

@@ -29,19 +29,27 @@
 (defun make-log-record (&key (level (%constant-default +level-info+)) (message (%constant-default ""))
                         (timestamp (%constant-default 0)) (fields (%constant-default nil))
                         (logger-name (%constant-default "root")))
+  "Build a LOG-RECORD directly, snapshotting FIELDS (a plist) the same way a
+LOGGER's own emit path does. Most callers should log through a LOGGER
+instead; this is for constructing a record without one, e.g. in tests."
   (%build-log-record level message timestamp (plist-to-alist fields) logger-name))
 
 (defun log-record-level (record)
+  "RECORD's numeric level rank."
   (%log-record-level record))
 
 (defun log-record-message (record)
+  "A fresh copy of RECORD's message string."
   (copy-seq (%log-record-message record)))
 
 (defun log-record-timestamp (record)
+  "RECORD's timestamp, as returned by the logger's clock at emission time."
   (%log-record-timestamp record))
 
 (defun log-record-fields (record)
+  "A fresh, recursively copied alist of RECORD's fields."
   (%copy-field-alist (%log-record-fields record)))
 
 (defun log-record-logger-name (record)
+  "A fresh copy of the name of the logger that emitted RECORD."
   (copy-seq (%log-record-logger-name record)))

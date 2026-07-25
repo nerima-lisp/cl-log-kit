@@ -13,8 +13,14 @@
 (defstruct (log-context-snapshot (:constructor %make-log-context-snapshot (fields span-id))
                                   (:predicate log-context-snapshot-p)
                                   (:copier nil))
+  "An opaque snapshot of one thread's WITH-LOG-CONTEXT fields and
+WITH-LOG-SPAN span id, captured by CAPTURE-LOG-CONTEXT for replay in
+another thread via WITH-CAPTURED-LOG-CONTEXT."
   (fields nil :read-only t)
   (span-id nil :read-only t))
+
+(setf (documentation 'log-context-snapshot-p 'function)
+      "True when VALUE is a LOG-CONTEXT-SNAPSHOT created by CAPTURE-LOG-CONTEXT.")
 
 (defun capture-log-context ()
   "Snapshot the calling thread's active WITH-LOG-CONTEXT fields and

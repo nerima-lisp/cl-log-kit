@@ -63,9 +63,12 @@ See [Logger Derivation and Context](context.md) for `derive-logger`,
 
 ## Using a default logger
 
-Explicit-logger and default-logger calls are separate macro families. Set
-`*default-logger*` once, then use the `log-default-*` macros anywhere without
-threading a logger through every call site:
+Explicit-logger and default-logger calls are separate macro families.
+`log-debug` / `log-info` / `log-warn` / `log-error` / `log-fatal` always
+evaluate their first argument as the logger, so `(log-info "server started"
+:port 8080)` signals a `type-error` rather than falling back to
+`*default-logger*`. Set `*default-logger*` once, then use the `log-default-*`
+macros anywhere without threading a logger through every call site:
 
 ```lisp
 (set-default-logger

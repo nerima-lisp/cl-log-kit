@@ -22,9 +22,8 @@ carries:
     - `:success` — the body returned normally
     - `:error` — the body signaled an `error` condition
     - `:nonlocal-exit` — the body exited via a non-local control transfer
-      other than a signaled error (e.g. `return-from`, `throw`, a restart
-      invocation) — this is also what a span reports if emitting the `:end`
-      record itself is interrupted before it completes
+      other than a signaled `error` (e.g. `return-from`, `throw`, a restart
+      invocation)
 
 A span whose emission of the `:end` record fails does not mask an error from
 the body: if the body itself already failed, that original error is what
@@ -52,10 +51,11 @@ to carry a span into a worker thread spawned from inside its body.
 
 ## Clock and ID injection
 
-The default duration clock is monotonic
-(`(/ (get-internal-real-time) internal-time-units-per-second)`), and span IDs
-default to a fresh gensym-derived string. Deterministic callers — tests, for
-example — can inject their own zero-argument functions:
+The default duration clock is monotonic and returns seconds as a
+double-float (`(/ (get-internal-real-time)
+(float internal-time-units-per-second 1d0))`), and span IDs default to a
+fresh gensym-derived string. Deterministic callers — tests, for example —
+can inject their own zero-argument functions:
 
 ```lisp
 (with-log-span (*logger* "fetch-account"

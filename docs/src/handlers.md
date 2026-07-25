@@ -89,7 +89,9 @@ to close the very stream `finish-output` is still writing to.
 ### `multi-handler`
 
 Sends each operation — handle, flush, or close — to every child handler in
-the order supplied:
+the order supplied. The child list must be a proper list with no duplicate
+handlers; a repeated handler would receive the same record twice, so it is
+rejected at construction time:
 
 ```lisp
 (make-multi-handler (list (make-text-handler) (make-json-handler :stream log-file))
@@ -148,9 +150,9 @@ process id, and the like) without every call site passing it explicitly:
 ```lisp
 (make-processor-handler (make-json-handler)
   :processors (list (lambda (record) (declare (ignore record))
-                       (list :host (machine-instance)))
-                     (lambda (record) (declare (ignore record))
-                       (list :pid (sb-posix:getpid)))))
+                      (list :host (machine-instance)))
+                    (lambda (record) (declare (ignore record))
+                      (list :pid (sb-posix:getpid)))))
 ```
 
 Each processor is a function of one argument (the record as enriched by
@@ -178,10 +180,11 @@ The default clock returns today's local date as `YYYY-MM-DD`, so the file
 rotates once per day by default; inject any zero-argument function
 returning a string that sorts lexicographically in chronological order (a
 custom clock is checked on every write) for a different rotation cadence.
-`:wire-format` selects `:text` (the default) or `:json`. `:max-files` bounds
-how many rotated files — including the current one — are kept, oldest
-deleted first; `0` (the default) keeps every one. The target directory must
-already exist.
+`:wire-format` selects `:text` (the default) or `:json`, and `:auto-flush`
+(default `t`) is passed through to whichever stream handler backs the
+current file. `:max-files` bounds how many rotated files — including the
+current one — are kept, oldest deleted first; `0` (the default) keeps every
+one. The target directory must already exist.
 
 ### `buffered-handler`
 
@@ -206,19 +209,21 @@ is closed without ever triggering are discarded, not silently emitted.
 
 ### Atomicity and lifecycle errors
 
-`multi-handler` and `filter-handler` admit each handle or flush operation
-atomically with respect to close: an operation admitted before close starts
-is guaranteed to finish before close invokes any child handler or callback.
-Once close has started, later handle and flush operations signal
-`handler-lifecycle-error` **before** invoking a predicate, child handler, or
-callback — so a call arriving during shutdown never partially executes.
+Every handler in this section except `null-handler` admits each handle or
+flush operation atomically with respect to close: an operation admitted
+before close starts is guaranteed to finish before close invokes any child
+handler or callback. Once close has started, later handle and flush
+operations signal `handler-lifecycle-error` **before** invoking a predicate,
+processor, child handler, or callback — so a call arriving during shutdown
+never partially executes.
 `handler-lifecycle-error-handler`, `handler-lifecycle-error-operation`, and
 `handler-lifecycle-error-state` expose the failure without parsing a report
 string.
 
-A callback must not synchronously try to close the same composition
-handler while it is being handled or flushed — that self-deadlocking
-request also signals `handler-lifecycle-error` rather than hanging.
+A callback must not synchronously try to close the same handler while it is
+being handled or flushed — that self-deadlocking request also signals
+`handler-lifecycle-error` (with state `:active-operation`) rather than
+hanging.
 
 ### `handler-open-p`
 
@@ -232,7 +237,7 @@ their actual state.
 ```lisp
 (with-handler (h (make-json-handler :stream socket :owns-stream t))
   ...)
-;; h's handler is closed on every exit, normal or non-local.
+;; h is closed on every exit, normal or non-local.
 
 (flush-logger logger)
 ;; flushes logger's handler and returns logger.

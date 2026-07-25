@@ -16,7 +16,10 @@
    (lock :initform (sb-thread:make-mutex :name "cl-log-kit buffered-handler") :reader %buffered-handler-lock)
    (buffer :initform nil :accessor %buffered-handler-buffer)
    (buffer-count :initform 0 :accessor %buffered-handler-buffer-count)
-   (activated-p :initform nil :accessor %buffered-handler-activated-p)))
+   (activated-p :initform nil :accessor %buffered-handler-activated-p))
+  (:documentation "Holds records back from TARGET until one at or above
+TRIGGER-LEVEL arrives, then forwards the whole held-back run in order. See
+MAKE-BUFFERED-HANDLER."))
 
 (defmethod initialize-instance :after ((instance buffered-handler) &key target
                                        (trigger-level (%constant-default +level-error+))

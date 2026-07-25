@@ -177,7 +177,7 @@ See [Quick Start](quick-start.md) and [Levels → Level-gated evaluation](levels
 | Symbol | Kind | Description |
 | --- | --- | --- |
 | `emit-log` | function | low-level: check the level, then build and emit a record, or return `nil` |
-| `log-debug` / `log-info` / `log-warn` / `log-error` / `log-fatal` | macro | explicit-logger logging at each level |
+| `log-debug` / `log-info` / `log-warn` / `log-error` / `log-fatal` | macro | logging at each fixed level; the first argument is always evaluated as the logger |
 | `log-default` | macro | `(log-default level message &rest fields)` — logging at an arbitrary level against `*default-logger*` |
 | `log-default-debug` / `log-default-info` / `log-default-warn` / `log-default-error` / `log-default-fatal` | macro | logging at each fixed level against `*default-logger*` |
 

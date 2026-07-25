@@ -109,6 +109,13 @@ truncated as-is, any other object is rendered like a condition message."
 (defun condition-fields (condition &key backtrace (capture-backtrace (%constant-default nil))
                          (render-report (%constant-default nil)) (message-limit (%constant-default 2048))
                          (backtrace-limit (%constant-default 8192)))
+  "Return a fields plist describing CONDITION: :CONDITION-TYPE, always; a
+bounded :CONDITION-MESSAGE only when RENDER-REPORT is true (otherwise just
+the type name, to avoid running an untrusted REPORT method by default);
+and :BACKTRACE when BACKTRACE is supplied or CAPTURE-BACTRACE is true, each
+bounded to MESSAGE-LIMIT/BACKTRACE-LIMIT characters. Prefer LOG-CONDITION
+for actually logging a condition — it evaluates all of this lazily,
+building it only when the log call's level passes the logger's filter."
   (%condition-fields condition
                      (%safe-condition-message condition message-limit :render-report render-report)
                      backtrace capture-backtrace backtrace-limit))

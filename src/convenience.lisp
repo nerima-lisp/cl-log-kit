@@ -13,6 +13,7 @@
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
 (defun log-enabled-p (logger level)
+  "True when LEVEL passes LOGGER's own minimum level filter."
   (check-type logger logger)
   (check-type level integer)
   (>= level (logger-level logger)))
@@ -34,12 +35,17 @@ and emitted."
     record))
 
 (defun emit-log (logger level message &optional (fields-plist (%constant-default nil)))
+  "Emit MESSAGE at LEVEL on LOGGER with FIELDS-PLIST, when LEVEL passes
+LOGGER's filter. Unlike the LOG-<LEVEL> macros, this is an ordinary
+function: MESSAGE and FIELDS-PLIST are always evaluated, even when the
+level is filtered. Prefer the macros for an expensive message or fields."
   (check-type logger logger)
   (check-type level integer)
   (when (log-enabled-p logger level)
     (%emit-log-unchecked logger level message fields-plist)))
 
 (defmacro with-default-logger ((logger) &body body)
+  "Run BODY with *DEFAULT-LOGGER* dynamically rebound to LOGGER."
   `(let ((*default-logger* ,logger))
      (check-type *default-logger* logger)
      ,@body))
@@ -54,27 +60,38 @@ filtered."
       `(let ((,logger-var ,logger)
              (,level-var ,level))
          (when (log-enabled-p ,logger-var ,level-var)
-           (%emit-log-unchecked ,logger-var ,level-var ,message (list ,@fields))))))
-
-  (defun %expand-log-level-form (logger-or-message arguments level)
-    ;; Default calls have 2N trailing fields; explicit calls have a message plus 2N.
-    (if (evenp (length arguments))
-        (%expand-log-form '*default-logger* level logger-or-message arguments)
-        (%expand-log-form logger-or-message level (first arguments) (rest arguments)))))
+           (%emit-log-unchecked ,logger-var ,level-var ,message (list ,@fields)))))))
 
 (defmacro log (logger level message &rest fields)
+  "Log MESSAGE at the numeric LEVEL on LOGGER with FIELDS, evaluating LOGGER
+and LEVEL exactly once and MESSAGE/FIELDS not at all when LEVEL is
+filtered. The general form behind LOG-DEBUG/LOG-INFO/etc's fixed levels;
+this shadows CL:LOG, so a package using LOG-KIT typically also imports or
+shadowing-imports this symbol."
   (%expand-log-form logger level message fields))
 
 (defmacro log-default (level message &rest fields)
+  "Like LOG, but always through *DEFAULT-LOGGER* rather than an explicit
+logger argument."
   (%expand-log-form '*default-logger* level message fields))
 
 (defmacro define-log-level-macros (&body specs)
-  "Generate dual-convention LOG-<LEVEL> and explicit LOG-DEFAULT-<LEVEL> macros."
+  "Generate a LOG-<LEVEL> macro requiring an explicit logger and message,
+plus a LOG-DEFAULT-<LEVEL> macro using *DEFAULT-LOGGER*, for each
+(explicit default level) triple in SPECS."
   `(progn
      ,@(loop for (explicit default level) in specs
-             collect `(defmacro ,explicit (logger-or-message &rest arguments)
-                        (%expand-log-level-form logger-or-message arguments ',level))
+             for level-name = (let* ((trimmed (string-trim "+" (symbol-name level)))
+                                     (dash (position #\- trimmed)))
+                                (if dash (subseq trimmed (1+ dash)) trimmed))
+             collect `(defmacro ,explicit (logger message &rest fields)
+                        ,(format nil "Log MESSAGE at ~A on LOGGER with FIELDS, evaluating
+LOGGER exactly once and MESSAGE/FIELDS not at all when ~A is filtered."
+                                level-name level-name)
+                        (%expand-log-form logger ',level message fields))
              collect `(defmacro ,default (message &rest fields)
+                        ,(format nil "Like ~A, but always through *DEFAULT-LOGGER* rather
+than an explicit logger argument." explicit)
                         (%expand-log-form '*default-logger* ',level message fields)))))
 
 (define-log-level-macros

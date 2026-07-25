@@ -18,6 +18,10 @@ Like every other logging macro, `log-condition` evaluates `condition`,
 `:fields`, and `:backtrace` only when `level` passes `logger`'s filter —
 a filtered call never renders a condition report or captures a backtrace.
 
+`:message` is optional; when it is omitted the record's message is the
+derived condition message, which by default is the type-based placeholder
+described below.
+
 ## Reserved keys
 
 `log-condition` always emits `:condition-type` and `:condition-message`,
@@ -54,6 +58,10 @@ enormous condition can never over-allocate:
 | Condition message | 2,048 characters | `:message-limit` |
 | Backtrace | 8,192 characters | `:backtrace-limit` |
 
+A rendered report is additionally printed with `*print-level*` 4 and
+`*print-length*` 16 bound, so a deeply nested or long object inside the
+report is elided rather than walked in full.
+
 Both limits are themselves capped by the global
 [field string-length limit](fields.md#resource-limits) (1,048,576
 characters) — requesting a limit above that signals
@@ -66,10 +74,16 @@ need the field plist without emitting a log record:
 
 ```lisp
 (condition-fields condition
-  :backtrace nil                ; explicit backtrace string/object, or nil to capture
+  :backtrace nil                ; an explicit backtrace string to record as-is
   :capture-backtrace nil        ; capture the current backtrace when true
   :render-report nil            ; execute the condition's own report method
   :message-limit 2048
   :backtrace-limit 8192)
 ;; => (:condition-type "my-error" :condition-message "<condition my-error>")
 ```
+
+`:backtrace` and `:capture-backtrace` are independent: with both left at
+`nil` no `:backtrace` field is produced at all. An explicit `:backtrace`
+string is truncated to `:backtrace-limit`; the current backtrace is captured
+only when `:capture-backtrace` is true, and is capped at 64 frames as well as
+`:backtrace-limit` characters.

@@ -7,18 +7,20 @@ timestamp, fields, and logger name:
 
 ```lisp
 (make-log-record :level +level-info+
-                  :message "server started"
-                  :timestamp 0
-                  :fields '(:port 8080)
-                  :logger-name "api")
+                 :message "server started"
+                 :timestamp 0
+                 :fields '(:port 8080)
+                 :logger-name "api")
 ```
 
 Its `:fields` argument is a property list, exactly like logger and call-site
 fields — it goes through the same [snapshotting and validation](fields.md)
-as every other field source. The public readers (`log-record-level`,
-`log-record-message`, `log-record-timestamp`, `log-record-fields`,
-`log-record-logger-name`) all return defensive copies, so a caller holding a
-record can never observe or cause a later mutation.
+as every other field source. Every slot is read-only, and the public readers
+that return a mutable structure — `log-record-message`,
+`log-record-fields`, and `log-record-logger-name` — hand back a fresh copy
+(recursively so, for fields), so a caller holding a record can never observe
+or cause a later mutation. `log-record-level` and `log-record-timestamp`
+return the stored integers directly.
 
 ## Implementing a new handler
 
@@ -56,11 +58,13 @@ and the [composition handlers](handlers.md#composition-and-lifecycle) — can
 inspect and control the new handler's lifecycle the same way they do for
 `text-handler` and `json-handler`.
 
-The built-in handlers' thread-safe, admit-only-while-open,
+The built-in composition handlers' thread-safe, admit-only-while-open,
 close-exactly-once discipline is implemented on top of a
 `close-managed-handler` base class and `defhandle` / `defflush` / `defclose`
-helper macros in `lifecycle.lisp`, but none of the three are exported — they
-are internal implementation, not public API. A new handler with the same
+helper macros in `lifecycle.lisp`; `text-handler` and `json-handler` get
+their equivalent guarantees from the per-stream write lock in
+`handler.lisp`. None of those are exported — they are internal
+implementation, not public API. A new handler with the same
 concurrency requirements needs to implement that discipline itself (or
 depend on `cl-log-kit`'s internal package-qualified symbols at your own
 risk); a handler used from a single thread, or one whose destination is

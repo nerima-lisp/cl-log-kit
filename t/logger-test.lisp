@@ -103,35 +103,10 @@
                 :value (incf value-count))
       (expect (= logger-count 1) :to-be-truthy)
       (expect (= value-count 0) :to-be-truthy)))
-  (it "legacy macros use the default logger and preserve lazy payloads"
-    (multiple-value-bind (logger handler) (counting-logger :level +level-info+)
-      (let ((*default-logger* logger)
-            (message-count 0)
-            (value-count 0))
-        (log-info (progn (incf message-count) "legacy")
-                  :value (progn (incf value-count) 7))
-        (expect (= message-count 1) :to-be-truthy)
-        (expect (= value-count 1) :to-be-truthy)
-        (expect handler :to-have-recorded 1)
-        (expect (latest-fields handler) :to-have-field :value 7)
-        (setf *default-logger* (make-logger :level +level-warn+ :handler handler))
-        (log-info (progn (incf message-count) "hidden")
-                  :value (incf value-count))
-        (expect (= message-count 1) :to-be-truthy)
-        (expect (= value-count 1) :to-be-truthy)
-        (expect handler :to-have-recorded 1))))
-  (it "legacy macros accept symbol field keys"
-    (multiple-value-bind (logger handler) (counting-logger :level +level-info+)
-      (let ((*default-logger* logger))
-        (log-info "message" 'request-id 7)
-        (expect handler :to-have-recorded 1)
-        (expect (latest-fields handler) :to-have-field 'request-id 7))))
-  (it "legacy macros accept string field keys"
-    (multiple-value-bind (logger handler) (counting-logger :level +level-info+)
-      (let ((*default-logger* logger))
-        (log-info "message" "request-id" 7)
-        (expect handler :to-have-recorded 1)
-        (expect (latest-fields handler) :to-have-field "request-id" 7))))
+  (it "rejects a non-logger first argument instead of guessing the calling convention"
+    ;; LOG-<LEVEL> always takes an explicit logger; a caller wanting the
+    ;; dynamically scoped default logger must say so with LOG-DEFAULT-<LEVEL>.
+    (signals type-error (log-info "message" :value 7)))
   (it "explicit and default macro families emit records"
     (multiple-value-bind (logger fetch) (capturing-logger :level +level-debug+)
       (let ((*default-logger* logger))

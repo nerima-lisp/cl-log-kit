@@ -10,7 +10,9 @@
 
 (defclass processor-handler (close-managed-handler)
   ((target :initarg :target :reader %processor-handler-target)
-   (processors :initarg :processors :reader %processor-handler-processors)))
+   (processors :initarg :processors :reader %processor-handler-processors))
+  (:documentation "Runs each record through a chain of enrichment functions
+before forwarding it to TARGET. See MAKE-PROCESSOR-HANDLER."))
 
 (defmethod initialize-instance :after ((instance processor-handler) &key target
                                        (processors (%constant-default nil)))

@@ -28,7 +28,10 @@ rotated files for retention purposes uses a plain string comparison."
    (lock :initform (sb-thread:make-mutex :name "cl-log-kit rotating-file-handler")
         :reader %rotating-handler-lock)
    (inner :initform nil :accessor %rotating-handler-inner)
-   (current-bucket :initform nil :accessor %rotating-handler-current-bucket)))
+   (current-bucket :initform nil :accessor %rotating-handler-current-bucket))
+  (:documentation "Writes to a file derived from a base pathname and a
+clock's current \"bucket\" (by default today's date), opening a fresh file
+and pruning old ones when the bucket changes. See MAKE-ROTATING-FILE-HANDLER."))
 
 (defmethod initialize-instance :after ((instance rotating-file-handler) &key base-pathname
                                        (max-files (%constant-default 0))
@@ -86,6 +89,18 @@ with HANDLER's lock held."
         (dolist (file (nthcdr max-files files))
           (ignore-errors (delete-file file)))))))
 
+(defun %call-with-rotating-handler-lock (handler thunk)
+  (sb-thread:with-mutex ((%rotating-handler-lock handler))
+    (funcall thunk)))
+
+(defmacro with-rotating-handler-lock ((handler) &body body)
+  "Run BODY with HANDLER's rotation lock held, serializing rotation checks,
+flushes, and closes on HANDLER against each other. Wraps
+%CALL-WITH-ROTATING-HANDLER-LOCK the way WITH-BOUNDED-OUTPUT wraps its own
+CPS helper, so DEFHANDLE/DEFFLUSH/DEFCLOSE below state the lock once each
+instead of repeating the raw WITH-MUTEX form."
+  `(%call-with-rotating-handler-lock ,handler (lambda () ,@body)))
+
 (defun %ensure-current-rotation (handler)
   "Return HANDLER's inner stream handler for the current clock bucket,
 rotating first if the bucket has changed since the last write. Must be
@@ -104,15 +119,15 @@ called with HANDLER's lock held."
   (%rotating-handler-inner handler))
 
 (defhandle rotating-file-handler (handler record)
-  (sb-thread:with-mutex ((%rotating-handler-lock handler))
+  (with-rotating-handler-lock (handler)
     (handle-log-record (%ensure-current-rotation handler) record)))
 
 (defflush rotating-file-handler (handler)
-  (sb-thread:with-mutex ((%rotating-handler-lock handler))
+  (with-rotating-handler-lock (handler)
     (when (%rotating-handler-inner handler)
       (flush-handler (%rotating-handler-inner handler)))))
 
 (defclose rotating-file-handler (handler)
-  (sb-thread:with-mutex ((%rotating-handler-lock handler))
+  (with-rotating-handler-lock (handler)
     (when (%rotating-handler-inner handler)
       (close-handler (%rotating-handler-inner handler)))))

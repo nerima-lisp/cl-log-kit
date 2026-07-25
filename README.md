@@ -8,6 +8,38 @@ them. Each built-in handler emits a record through one
 
 Full documentation: <https://nerima-lisp.github.io/cl-log-kit/>
 
+## Production readiness
+
+"Production ready" is a checkable claim here, not a slogan:
+
+- **Zero runtime dependencies.** `cl-log-kit` (the shipped system) depends
+  on nothing but ASDF ≥3.3.1 and SBCL itself — nothing to audit, pin, or
+  break in a consumer's own dependency graph. `cl-log-kit/test` depends on
+  `cl-weave` and `cl-json-kit`, both test-only.
+- **Semantic Versioning, enforced by CHANGELOG discipline.** Every
+  behavior change — including internal-only refactors — is recorded in
+  [`CHANGELOG.md`](CHANGELOG.md) under the version it shipped in; every
+  breaking change gets its own `### Breaking Changes` section (see
+  `## [2.0.0]`) with an explicit migration path.
+- **A CI gate that runs the exact suite a contributor runs locally**
+  (`nix flake check` drives `run-ci.lisp tests`, timeout-enforced via
+  `cl-process-kit`), plus a coverage gate (`run-coverage.lisp`) that fails
+  the build on any expression/branch coverage regression — currently
+  93.85% / 98.7%, see [Testing and Coverage](https://nerima-lisp.github.io/cl-log-kit/testing/).
+- **Concurrency-safe by construction, not by convention.** Every handler
+  that owns a stream serializes writes and closes through a single
+  reentrant lock (`handler.lisp`); every composite handler's lifecycle
+  (`lifecycle.lisp`) guarantees close-at-most-once under concurrent and
+  recursive callers. These are exercised by dedicated multi-thread specs,
+  not just single-threaded examples.
+- **Bounded by construction against hostile or malformed input.** Field
+  depth, node count, string length, and collection size are all capped
+  (`conditions.lisp`), with structured conditions on every limit — a
+  logging call can never be the vector for an unbounded-memory or
+  infinite-loop bug, even on attacker-influenced field values.
+- **MIT-licensed**, with a public bug tracker and no undocumented private
+  API — every exported symbol has a docstring.
+
 ## Installation
 
 Clone the repository somewhere ASDF can find it, then load the system:
@@ -51,7 +83,7 @@ with the same case-insensitive canonical name.
 
 ### Default logger
 
-Version 1 separates explicit-logger and default-logger calls. The
+Explicit-logger and default-logger calls are separate families. The
 `log-debug`, `log-info`, `log-warn`, `log-error`, and `log-fatal` macros
 require a logger as their first argument. Use the corresponding
 `log-default-*` macro after configuring `*default-logger*`:
@@ -64,9 +96,13 @@ require a logger as their first argument. Use the corresponding
 ;; ts=... level=ERROR logger="root" msg="request failed" field."reason"="timeout"
 ```
 
-Calls written as `(log-info "message")` for earlier releases must become
-either `(log-info logger "message")` or `(log-default-info "message")`.
-Use `with-default-logger` for a dynamically scoped default without mutating
+As of 2.0.0 this is enforced, not just documented: `log-info` and its
+siblings always evaluate their first argument as the logger, so a call
+written for a pre-1.0 release as `(log-info "message")` signals a
+`type-error` — a string is not a `logger` — instead of guessing the caller
+meant `*default-logger*` from the argument count. Migrate it to either
+`(log-info logger "message")` or `(log-default-info "message")`. Use
+`with-default-logger` for a dynamically scoped default without mutating
 the process-wide default:
 
 ```lisp
@@ -402,10 +438,10 @@ enforce — but the gap is now small and the throughput is allocation-free.
 ## Testing
 
 The `cl-log-kit/test` ASDF system depends on
-[`cl-weave`](https://github.com/nerima-lisp/cl-weave) and
-[`cl-json-kit`](https://github.com/nerima-lisp/cl-json-kit) (an independent
-JSON parser used to assert `json-handler` output parses back to the expected
-structure, not just contains the right substrings). `run-ci.lisp` also loads
+[`cl-weave`](https://github.com/nerima-lisp/cl-weave) 1.0.0 or newer and
+[`cl-json-kit`](https://github.com/nerima-lisp/cl-json-kit) 1.0.0 or newer
+(an independent JSON parser used to assert `json-handler` output parses back
+to the expected structure, not just contains the right substrings). `run-ci.lisp` also loads
 [`cl-process-kit`](https://github.com/nerima-lisp/cl-process-kit) directly,
 for its own timeout enforcement — not as an ASDF dependency of either system.
 Point `CL_SOURCE_REGISTRY` at all three repositories, or use the flake, which
@@ -443,13 +479,17 @@ develop` instead, where the working tree is real.
 
 `run-coverage.lisp` runs the suite through `cl-weave:run-all`'s native
 `:coverage` support and **fails the build if coverage regresses** below the
-floors set in `run-coverage.lisp` (currently 95.9% expression / 98.0%
-branch — just under the 95.98%/98.52% this branch has actually reached).
+floors set in `run-coverage.lisp` (currently 93.85% expression / 98.7%
+branch — just under the 93.95% this branch has actually reached). The
+expression floor is lower than 1.7.0's because 2.0.0 gave all 101 exported
+symbols a docstring: the covered-expression count is unchanged (2887), while
+the total rose from 3000 to 3073, since `sb-cover` counts a docstring literal
+as an expression it can never observe executing.
 100% is not the target: every remaining gap is either a declarative form
 with no runtime execution model (`defconstant`, `defclass`/`defstruct`
-slot lists, `defpackage` exports, `in-package`) or a `defmacro` body, which
-runs only at macroexpansion time and is invisible to `sb-cover`'s runtime
-instrumentation by construction — see `CHANGELOG.md` for the line-by-line
+slot lists, `defpackage` exports, `in-package`, docstrings) or a
+`defmacro`/`define-condition` body, which runs only at macroexpansion time
+and is invisible to `sb-cover`'s runtime instrumentation by construction — see `CHANGELOG.md` for the line-by-line
 audit and the experiments that confirmed each category. The HTML report is
 written to `coverage/cover-index.html`.
 

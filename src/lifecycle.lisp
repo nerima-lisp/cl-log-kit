@@ -20,13 +20,33 @@
     (:callback (funcall callback operation target condition) nil)))
 
 (define-condition handler-lifecycle-error (log-kit-error)
-  ((handler :initarg :handler :reader handler-lifecycle-error-handler)
-   (operation :initarg :operation :reader handler-lifecycle-error-operation)
-   (state :initarg :state :reader handler-lifecycle-error-state))
+  ((handler :initarg :handler :reader handler-lifecycle-error-handler
+            :documentation "The handler the disallowed operation was attempted on.")
+   (operation :initarg :operation :reader handler-lifecycle-error-operation
+              :documentation "A keyword naming the attempted operation, e.g. :HANDLE,
+:FLUSH, or :CLOSE.")
+   (state :initarg :state :reader handler-lifecycle-error-state
+          :documentation "The handler's lifecycle state that made OPERATION invalid,
+e.g. :ACTIVE-OPERATION when a handler tries to close itself from within its
+own HANDLE-LOG-RECORD/FLUSH-HANDLER method."))
   (:report (lambda (condition stream)
              (format stream "Cannot perform ~S on a handler in lifecycle state ~S."
                      (handler-lifecycle-error-operation condition)
-                     (handler-lifecycle-error-state condition)))))
+                     (handler-lifecycle-error-state condition))))
+  (:documentation "Signaled when an operation is attempted on a
+CLOSE-MANAGED-HANDLER outside the lifecycle state that allows it — most
+commonly a handler trying to close itself from inside its own
+HANDLE-LOG-RECORD or FLUSH-HANDLER method, which would deadlock."))
+
+;;; DEFINE-CONDITION's per-slot :DOCUMENTATION only reaches MOP slot
+;;; introspection, not (DOCUMENTATION #'READER 'FUNCTION); set the latter
+;;; explicitly so the reader generic functions answer DOCUMENTATION too.
+(setf (documentation 'handler-lifecycle-error-handler 'function)
+      "The handler the disallowed operation was attempted on.")
+(setf (documentation 'handler-lifecycle-error-operation 'function)
+      "A keyword naming the attempted operation, e.g. :HANDLE, :FLUSH, or :CLOSE.")
+(setf (documentation 'handler-lifecycle-error-state 'function)
+      "The handler's lifecycle state that made OPERATION invalid.")
 
 ;;; Handlers currently running an admitted operation on the calling thread,
 ;;; so %CALL-CLOSE-ONCE can refuse a handler trying to close itself from

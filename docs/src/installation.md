@@ -63,7 +63,9 @@ Pick the path that matches how you use the library.
 
     `run-ci.lisp`, `run-tests.lisp`, and `run-coverage.lisp` also work
     without Nix — see [Testing and Coverage](testing.md) for the direct
-    `CL_SOURCE_REGISTRY` invocation.
+    `CL_SOURCE_REGISTRY` invocation. `cl-log-kit/test` requires `cl-weave`
+    1.0.0 or newer and `cl-json-kit` 1.0.0 or newer; the flake pins both, so
+    only a hand-managed `CL_SOURCE_REGISTRY` can point at an older checkout.
 
 ## Runtime Support
 
@@ -74,9 +76,7 @@ pipeline exercise.
 
 ## Package and Naming
 
-Load the system, then `:use` the `log-kit` package. `log-kit` shadows the
-common-lisp `log` symbol (for `log-error`/`log-info`/etc.), so import it with
-`:shadowing-import-from` if your package also uses `cl`:
+Load the system, then `:use` the `log-kit` package:
 
 ```lisp
 (defpackage #:my-app
@@ -84,5 +84,12 @@ common-lisp `log` symbol (for `log-error`/`log-info`/etc.), so import it with
   (:shadowing-import-from #:log-kit #:log))
 (in-package #:my-app)
 ```
+
+`log-kit` shadows the common-lisp `log` symbol for its own `log` macro, the
+arbitrary-level general form behind `log-debug`/`log-info`/etc. That symbol
+is internal, so `:use`-ing `log-kit` alone leaves `cl:log` (the logarithm)
+accessible; the `:shadowing-import-from` line above is what makes `log-kit`'s
+macro available under that name instead, and can be dropped if you only use
+the fixed-level macros.
 
 Continue with [Quick Start](quick-start.md) to build your first logger.

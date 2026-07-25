@@ -42,13 +42,20 @@ a defensively copied key and a fresh snapshot of the value."
 (defstruct (json-null-marker (:constructor %make-json-null)))
 (defstruct (json-false-marker (:constructor %make-json-false)))
 
-(defparameter +json-null+ (%make-json-null))
-(defparameter +json-false+ (%make-json-false))
+(defparameter +json-null+ (%make-json-null)
+  "The sentinel a field value must be EQ to for the JSON encoder to render it
+as a literal JSON null, distinct from Lisp NIL (which JSON handlers already
+have their own meaning for).")
+(defparameter +json-false+ (%make-json-false)
+  "The sentinel a field value must be EQ to for the JSON encoder to render it
+as a literal JSON false, distinct from Lisp NIL.")
 
 (defun json-null-p (value)
+  "True when VALUE is the +JSON-NULL+ sentinel."
   (json-null-marker-p value))
 
 (defun json-false-p (value)
+  "True when VALUE is the +JSON-FALSE+ sentinel."
   (json-false-marker-p value))
 
 (defstruct (json-object-value
@@ -56,10 +63,16 @@ a defensively copied key and a fresh snapshot of the value."
             (:predicate json-object-p))
   (members nil :type list :read-only t))
 
+(setf (documentation 'json-object-p 'function)
+      "True when VALUE is a JSON object wrapper created by JSON-OBJECT.")
+
 (defstruct (json-array-value
             (:constructor %make-json-array (elements))
             (:predicate json-array-p))
   (elements #() :type vector :read-only t))
+
+(setf (documentation 'json-array-p 'function)
+      "True when VALUE is a JSON array wrapper created by JSON-ARRAY.")
 
 (defun %json-object-members (object)
   (json-object-value-members object))
@@ -160,9 +173,15 @@ helper, keeping each snapshot branch free of lambda boilerplate."
         (push (%copy-field-pair pair) result)))))
 
 (defun json-object (members)
+  "Wrap MEMBERS — an alist of (KEY . VALUE) cons pairs with symbol or string
+keys and no duplicate canonical key — as a JSON object field value. Signals
+INVALID-LOG-FIELDS on a malformed member or a duplicate canonical key."
   (%make-json-object (%validated-object-members members)))
 
 (defun json-array (elements)
+  "Wrap ELEMENTS — a proper list or vector — as a JSON array field value.
+Every element is defensively snapshotted the same way a plain field value
+is."
   (if (vectorp elements)
       (%check-snapshot-size :array-elements (length elements) +max-log-field-array-elements+)
       (%bounded-proper-list-length elements +max-log-field-array-elements+ :array-elements
@@ -171,16 +190,21 @@ helper, keeping each snapshot branch free of lambda boilerplate."
     (%make-json-array (map 'vector #'%snapshot-field-value elements))))
 
 (defun json-object-members (object)
+  "Return a fresh copy of OBJECT's (KEY . VALUE) member alist."
   (check-type object json-object-value)
   (let ((*field-snapshot-context* (%make-snapshot-context)))
     (mapcar #'%copy-field-pair (%json-object-members object))))
 
 (defun json-array-elements (array)
+  "Return a fresh copy of ARRAY's element vector."
   (check-type array json-array-value)
   (let ((*field-snapshot-context* (%make-snapshot-context)))
     (map 'vector #'%snapshot-field-value (%json-array-elements array))))
 
 (defun plist-to-alist (plist)
+  "Convert PLIST (a property list of field key/value pairs) to a canonical
+alist: keys are validated and defensively copied, values are recursively
+snapshotted, and only the first pair for each canonical key is kept."
   (%bounded-proper-list-length plist (* 2 +max-log-field-array-elements+) :array-elements
                                "field plist must be a finite proper list")
   (let ((*field-snapshot-context* (%make-snapshot-context))
