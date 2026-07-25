@@ -55,14 +55,14 @@ Pick the path that matches how you use the library.
     ```sh
     git clone https://github.com/nerima-lisp/cl-log-kit.git
     cd cl-log-kit
-    nix develop                 # SBCL + CL_SOURCE_REGISTRY for cl-weave,
-                                 # cl-process-kit, and cl-json-kit
+    nix develop                 # SBCL + CL_SOURCE_REGISTRY for cl-weave
+                                 # and cl-json-kit
     nix run .#test               # run the test suite with a real timeout
     nix flake check               # every CI entrypoint
     ```
 
-    `run-ci.lisp`, `run-tests.lisp`, and `run-coverage.lisp` also work
-    without Nix — see [Testing and Coverage](testing.md) for the direct
+    `run-tests.lisp` and `run-coverage.lisp` also work
+    without Nix — see [Development](development.md) for the direct
     `CL_SOURCE_REGISTRY` invocation. `cl-log-kit/test` requires `cl-weave`
     1.0.0 or newer and `cl-json-kit` 1.0.0 or newer; the flake pins both, so
     only a hand-managed `CL_SOURCE_REGISTRY` can point at an older checkout.
@@ -72,7 +72,8 @@ Pick the path that matches how you use the library.
 `cl-log-kit` is developed and tested against SBCL. The library itself has no
 third-party runtime dependencies, so it should load cleanly on any modern
 ASDF 3.3.1+ setup; SBCL is the only implementation the test suite and CI
-pipeline exercise.
+pipeline exercise. See [Compatibility](compatibility.md) for the platforms
+the flake builds and the stability promise attached to the exported surface.
 
 ## Package and Naming
 

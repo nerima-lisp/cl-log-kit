@@ -65,12 +65,44 @@ with duplicate output paths.
 
 </div>
 
+## Production readiness
+
+"Production ready" is a checkable claim here, not a slogan:
+
+- **Zero runtime dependencies.** The shipped `cl-log-kit` system depends on
+  nothing but ASDF 3.3.1 or newer and SBCL itself — nothing to audit, pin, or
+  break in a consumer's own dependency graph. `cl-log-kit/test` depends on
+  `cl-weave` and `cl-json-kit`, both test-only.
+- **Semantic Versioning, enforced by changelog discipline.** Every behavior
+  change is recorded in the [changelog](changelog.md) under the version it
+  shipped in, and anything that changes the shape or behavior of an exported
+  symbol gets a major version and its own migration path. See
+  [Compatibility](compatibility.md).
+- **A CI gate that runs the exact suite a contributor runs locally.**
+  `nix flake check` drives the SBCL suite, the formatting gate, and this
+  site's `--strict` build; a separate coverage gate fails the build on any
+  expression or branch coverage regression, currently 93.95% / 98.77%. See
+  [Development](development.md).
+- **Concurrency-safe by construction, not by convention.** Every handler that
+  owns a stream serializes writes and closes through a single reentrant lock,
+  and every composite handler's lifecycle guarantees close-at-most-once under
+  concurrent and recursive callers. These are exercised by dedicated
+  multi-thread specs, not single-threaded examples. See
+  [Handlers](handlers.md).
+- **Bounded by construction against hostile or malformed input.** Field
+  depth, node count, string length, and collection size are all capped, with
+  structured conditions on every limit, so a logging call can never be the
+  vector for an unbounded-memory or infinite-loop bug even on
+  attacker-influenced field values. See [Fields](fields.md).
+- **MIT-licensed**, with a public bug tracker and no undocumented private
+  API — every exported symbol has a docstring.
+
 ## Status
 
 Version 1.0.0. `cl-log-kit` is a small, stable surface — see the
 [API Reference](api-reference.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
-suite documented in [Testing and Coverage](testing.md):
+suite documented in [Development](development.md):
 
 - `make-logger` / `logger-with` / `derive-logger` / `logger-child` for
   building and deriving structured loggers
@@ -127,7 +159,11 @@ suite documented in [Testing and Coverage](testing.md):
 - [Records and Extension](extension.md) — `log-record`, implementing new
   handlers, and injecting a deterministic clock.
 - [API Reference](api-reference.md) — every exported symbol, grouped by area.
-- [Testing and Coverage](testing.md) — `run-ci.lisp`, coverage floors, and the
+- [Compatibility](compatibility.md) — supported platforms, the stability
+  promise, and what counts as a security defect.
+- [Benchmarks](benchmarks.md) — `handle-log-record` timings and the
+  zero-allocation guarantee the suite asserts.
+- [Development](development.md) — the dev shell, coverage floors, and the
   Nix-driven test workflow.
 
 ## Nix Workflow
@@ -136,14 +172,31 @@ The [flake.nix](https://github.com/nerima-lisp/cl-log-kit/blob/main/flake.nix)
 at the repository root packages `cl-log-kit` as a Nix flake:
 
 - `nix develop` — a devShell with SBCL and the test-only dependencies
-  (`cl-weave`, `cl-process-kit`, `cl-json-kit`) wired into
-  `CL_SOURCE_REGISTRY`.
+  (`cl-weave`, `cl-json-kit`) wired into `CL_SOURCE_REGISTRY`.
 - `nix build` — builds the `cl-log-kit` ASDF system as a Nix package.
-- `nix run .#test` — runs the test suite through `run-ci.lisp`, with a real
-  escalating timeout.
-- `nix flake check` — the test suite as a reproducible derivation.
+- `nix run .#test` — runs the test suite under a bounded timeout.
+- `nix flake check` — the test suite, the formatting gate, and this site's
+  `--strict` build, each as a reproducible derivation.
 - `nix build .#docs` — builds this documentation site with MkDocs (Material)
   in `--strict` mode, so broken links fail the build.
+
+## Project
+
+`cl-log-kit` is part of the [nerima-lisp](https://github.com/nerima-lisp) org
+and follows its shared community health files:
+
+- [Contributing](https://github.com/nerima-lisp/.github/blob/main/CONTRIBUTING.md)
+- [Code of Conduct](https://github.com/nerima-lisp/.github/blob/main/CODE_OF_CONDUCT.md)
+- [Security policy](https://github.com/nerima-lisp/.github/blob/main/SECURITY.md)
+- [Support](https://github.com/nerima-lisp/.github/blob/main/SUPPORT.md)
+
+Report reproducible defects, documentation gaps, and concrete feature
+requests through
+[GitHub Issues](https://github.com/nerima-lisp/cl-log-kit/issues/new/choose).
+Include the smallest form that reproduces the problem and your SBCL version;
+for anything involving concurrency, ordering, or a hang, say how many threads
+were involved and whether it reproduces every run — that distinction usually
+determines where to look first.
 
 ## License
 

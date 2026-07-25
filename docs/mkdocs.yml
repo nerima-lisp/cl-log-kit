@@ -1,8 +1,17 @@
 # cl-log-kit documentation — MkDocs + Material configuration.
 #
-# Build:   mkdocs build -f docs/mkdocs.yml --strict
-# Serve:   mkdocs serve  -f docs/mkdocs.yml
+# Build:   mkdocs build --strict -f docs/mkdocs.yml
+# Serve:   mkdocs serve -f docs/mkdocs.yml
 # The Nix flake (`nix build .#docs`) drives the same config offline.
+#
+# Run mkdocs from the repository root, not from docs/: pymdownx.snippets
+# resolves base_path against the working directory, and docs/src/changelog.md
+# includes the top-level CHANGELOG.md.
+
+# Duplicated from the flake's --strict flag on purpose, so `mkdocs serve` and
+# any other entry point apply the same gate instead of depending on a caller
+# remembering the flag. Use `mkdocs serve --no-strict` while drafting.
+strict: true
 
 site_name: cl-log-kit
 site_description: >-
@@ -92,7 +101,13 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  # base_path is resolved against the working directory mkdocs was started
+  # from, which is the repository root. check_paths turns a missing include
+  # into a build failure, matching what --strict does for broken links.
+  - pymdownx.snippets:
+      base_path:
+        - "."
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -118,8 +133,17 @@ markdown_extensions:
       permalink: true
       title: On this page
 
+# Six sections, fixed in this order, ordered by the reader's state: Getting
+# Started is for someone who has not run it yet, Guide for someone who has,
+# Reference for someone writing code and looking up an answer, Internals for
+# someone changing the library, Project for someone contributing to it.
+# Guide topics are in dependency order, not alphabetical: each page uses the
+# vocabulary the ones above it introduced.
+#
+# --strict fails the build on a page that is not listed here, which is what
+# keeps this nav from silently falling behind docs/src/.
 nav:
-  - Home: README.md
+  - Home: index.md
   - Getting Started:
       - Installation: installation.md
       - Quick Start: quick-start.md
@@ -133,5 +157,14 @@ nav:
       - Records and Extension: extension.md
   - Reference:
       - API Reference: api-reference.md
-      - Testing and Coverage: testing.md
+      - Compatibility: compatibility.md
+  - Internals:
+      - Benchmarks: benchmarks.md
+  - Project:
+      - Development: development.md
       - Changelog: changelog.md
+
+# docs/notes/ holds measurements worth keeping but not worth publishing.
+# Without this declaration --strict fails the build the moment one is added.
+not_in_nav: |
+  notes/
