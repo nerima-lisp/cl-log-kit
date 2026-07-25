@@ -29,9 +29,12 @@ signals. See MAKE-MULTI-HANDLER."))
 (defun make-multi-handler (handlers &key (error-policy (%constant-default :signal)) error-callback)
   "Build a handler that forwards every record to each handler in HANDLERS (a
 proper list with no duplicates). ERROR-POLICY governs what happens when a
-child signals: :SIGNAL (the default) re-signals after every remaining child
-has been tried; :CONTINUE swallows the error; :CALLBACK calls
-ERROR-CALLBACK with (OPERATION TARGET CONDITION)."
+child signals: :SIGNAL (the default) stops the pass and re-signals;
+:CONTINUE swallows the error and proceeds to the remaining children;
+:CALLBACK calls ERROR-CALLBACK with (OPERATION TARGET CONDITION) and then
+proceeds. CLOSE-HANDLER is the exception to :SIGNAL's stop-at-the-first-error
+rule: every child is given a chance to close, and only then is the first
+error re-signaled, so one child's failure cannot leak the rest."
   (make-instance 'multi-handler :handlers handlers :error-policy error-policy
                                 :error-callback error-callback))
 

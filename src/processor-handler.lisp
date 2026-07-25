@@ -16,7 +16,6 @@ before forwarding it to TARGET. See MAKE-PROCESSOR-HANDLER."))
 
 (defmethod initialize-instance :after ((instance processor-handler) &key target
                                        (processors (%constant-default nil)))
-  (declare (ignore instance))
   (check-type target handler)
   (unless (%proper-list-p processors)
     (%invalid-fields processors "processor collection must be a finite proper list"))

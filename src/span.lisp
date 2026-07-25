@@ -11,8 +11,31 @@
 (defun %monotonic-time ()
   (/ (get-internal-real-time) (float internal-time-units-per-second 1d0)))
 
+;;; Span ids must be unique across every thread in the process: the whole
+;;; point of :SPAN-ID (and CAPTURE-LOG-CONTEXT's cross-thread replay) is that
+;;; two records carrying the same id belong to the same span. CL:GENSYM does
+;;; not provide that — it reads and writes the global *GENSYM-COUNTER*
+;;; non-atomically, so concurrent spans hand out duplicate ids (measured: 8
+;;; threads x 20,000 spans yielded 39,595 distinct ids out of 160,000). An
+;;; ATOMIC-INCF on a dedicated word-typed global is a single lock-xadd, so it
+;;; is both correct under concurrency and cheaper than GENSYM's symbol
+;;; allocation. Uniqueness is per-process, exactly as it was before; callers
+;;; correlating spans across processes should inject their own :ID-SOURCE.
+(defstruct (%span-id-counter (:constructor %make-span-id-counter ()))
+  ;; SB-EXT:ATOMIC-INCF requires a place it can compile to a bare xadd: a
+  ;; DEFSTRUCT slot declared FIXNUM or SB-EXT:WORD is the supported spelling
+  ;; (a plain DEFGLOBAL symbol is not).
+  (value 0 :type sb-ext:word))
+
+;; DEFINE-LOAD-TIME-GLOBAL, not DEFGLOBAL: DEFGLOBAL also evaluates its value
+;; form at compile time, where %MAKE-SPAN-ID-COUNTER — defined just above, in
+;; this same file — does not exist yet.
+(sb-ext:define-load-time-global **span-id-counter** (%make-span-id-counter))
+
 (defun %next-span-id ()
-  (symbol-name (gensym "SPAN-")))
+  ;; ~D, not PRINC: the rendered id must stay decimal regardless of a
+  ;; caller-bound *PRINT-BASE*, the same reason %WRITE-INTEGER exists.
+  (format nil "SPAN-~D" (sb-ext:atomic-incf (%span-id-counter-value **span-id-counter**))))
 
 (defun %span-fields (span-id parent-span-id event fields &key duration outcome)
   (let ((reserved (append (list :span-id span-id :span-event event)

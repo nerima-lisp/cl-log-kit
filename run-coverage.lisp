@@ -48,9 +48,8 @@
     (setf (uiop:getenv "CL_SOURCE_REGISTRY") combined)
     (asdf:initialize-source-registry)))
 
-;; The exact aggregate achieved as of the 1.7.0 audit (CHANGELOG.md) is
-;; 96.32% expression / 98.77% branch across src/, closing every genuinely
-;; reachable gap found by direct inspection of the per-span coverage HTML:
+;; Every genuinely reachable gap found by direct inspection of the per-span
+;; coverage HTML has been closed:
 ;; the bignum fallback in %WRITE-INTEGER, %VALIDATE-LOGGER-INITARGS's
 ;; improper-list guard, the BOM/LS/PS/lone-surrogate escape branches and the
 ;; plain-non-ASCII passthrough branch in both wire formats, a non-keyword
@@ -63,25 +62,24 @@
 ;; DEFCLASS/DEFSTRUCT slot lists, DEFPACKAGE export lists, IN-PACKAGE, and
 ;; DEFMACRO/DEFINE-CONDITION bodies).
 ;;
-;; Extracting rotating-file-handler.lisp's three repeated
-;; (SB-THREAD:WITH-MUTEX ((%ROTATING-HANDLER-LOCK HANDLER)) ...) call sites
-;; into the %CALL-WITH-ROTATING-HANDLER-LOCK/WITH-ROTATING-HANDLER-LOCK CPS
-;; pair (matching WITH-BOUNDED-OUTPUT/WITH-SNAPSHOT-OBJECT's existing idiom)
-;; moved that logic behind one more DEFMACRO body, costing the expression
-;; floor its own small, unavoidable share of the declarative-overhead
-;; category above — 96.19% was the true aggregate at that point.
+;; Two structural costs explain why the expression floor is where it is
+;; rather than in the 96% range the branch figure suggests, and both are
+;; worth understanding before anyone reads the number as "7% untested":
 ;;
-;; Giving every one of the 101 exported LOG-KIT symbols a docstring (2.0.0;
-;; previously 81 had none) added a large, one-time expression-coverage cost
-;; with zero behavioral coverage lost: covered-expression count is unchanged
-;; (2887 both before and after) while total expression count rose from 3000
-;; to 3073, because a DEFUN/DEFMACRO/DEFCLASS/DEFSTRUCT docstring is a data
-;; literal in the same declarative, no-runtime-execution-model category as
-;; DEFCONSTANT and DEFPACKAGE export lists above — sb-cover counts it as an
-;; expression but can never observe it "executing." 93.95% is the new true
-;; aggregate. These floors sit just below the actual aggregate so ordinary
-;; floating-point/platform variance in sb-cover's own accounting cannot trip
-;; the gate spuriously, while still catching any real regression.
+;;   1. CPS helper pairs. Extracting a repeated
+;;      (SB-THREAD:WITH-MUTEX ((%ROTATING-HANDLER-LOCK HANDLER)) ...) or
+;;      cycle-marking form into a %CALL-WITH-.../WITH-... pair moves that
+;;      logic behind one more DEFMACRO body. Better code, unmeasurable body.
+;;   2. Docstrings. Every one of the 101 exported LOG-KIT symbols carries
+;;      one, and sb-cover counts a docstring literal as an expression it can
+;;      never observe executing — the covered-expression count is untouched
+;;      while the total rises. Documenting the public surface is worth more
+;;      than the metric it costs.
+;;
+;; The true aggregate is 93.95% expression / 98.77% branch. These floors sit
+;; just below it so ordinary floating-point/platform variance in sb-cover's
+;; own accounting cannot trip the gate spuriously, while still catching any
+;; real regression.
 (defparameter *coverage-minimum-expression* 93.85)
 (defparameter *coverage-minimum-branch* 98.7)
 

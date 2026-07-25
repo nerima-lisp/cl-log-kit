@@ -78,7 +78,7 @@
         pkgs:
         pkgs.stdenvNoCC.mkDerivation {
           pname = "cl-log-kit-docs";
-          version = "2.0.0";
+          version = "1.0.0";
           src = pkgs.lib.fileset.toSource {
             root = ./docs;
             fileset = pkgs.lib.fileset.unions [
@@ -109,7 +109,7 @@
         rec {
           cl-log-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "2.0.0";
+            version = "1.0.0";
             src = self;
             systems = [ "cl-log-kit" ];
           };

@@ -44,24 +44,27 @@ develop` instead, where the working tree is real.
 
 `run-coverage.lisp` runs the suite through `cl-weave:run-all`'s native
 `:coverage` support and **fails the build if coverage regresses** below the
-floors set in `run-coverage.lisp` — currently 93.85% expression / 98.7%
-branch coverage. Branch coverage (98.7%) is the highest ever recorded for
-this project (see the `## [1.7.0]` entry of [CHANGELOG.md](changelog.md) for
-exactly which branches were found and closed to reach it). The expression
-floor is lower than 1.7.0's 96.25% not because behavioral coverage
-regressed, but because 2.0.0 gave every one of the 101 exported `log-kit`
-symbols a docstring: covered-expression count is unchanged (2887 before and
-after), while total expression count rose (3000 → 3073) because sb-cover
-counts each docstring literal as an expression it can never observe
-"executing" — the same declarative, no-runtime-execution-model category as
-`defconstant` and `defpackage` export lists. See the `run-coverage.lisp`
-comment and the `## [2.0.0]` entry of [CHANGELOG.md](changelog.md) for the
-exact accounting. Every remaining gap above the floor is confirmed
-non-executable by construction (a `defconstant`, `defclass`/`defstruct` slot
-list, `defpackage` export list, `in-package` form, or a
-`defmacro`/`define-condition` body — none of which sb-cover's runtime
-instrumentation can observe), not an unexamined shortfall; see
-[CHANGELOG.md](changelog.md) for the line-by-line audit history. The HTML
+floors set in `run-coverage.lisp` — 93.85% expression / 98.7% branch. The
+suite actually reaches 93.95% / 98.77%; the floors sit just below that so
+ordinary platform variance in sb-cover's own accounting cannot trip the gate
+spuriously while a real regression still does.
+
+Read the expression figure with two structural costs in mind, both
+deliberate:
+
+- **CPS helper pairs.** Extracting a repeated `with-mutex` or
+  cycle-marking form into a `%call-with-…`/`with-…` pair moves that logic
+  behind one more `defmacro` body — better code, and a body sb-cover's
+  runtime instrumentation cannot observe.
+- **Docstrings.** All 101 exported symbols carry one, and sb-cover counts a
+  docstring literal as an expression it can never see execute: the
+  *covered* count is untouched while the total rises.
+
+Every remaining gap above the floor is confirmed non-executable by
+construction — a `defconstant`, `defclass`/`defstruct` slot list,
+`defpackage` export list, `in-package` form, or a
+`defmacro`/`define-condition` body — not an unexamined shortfall. See the
+comment at the top of `run-coverage.lisp` for the full accounting. The HTML
 report is written to `coverage/cover-index.html`.
 
 ## Test-writing techniques

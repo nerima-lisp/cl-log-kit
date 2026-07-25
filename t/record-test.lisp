@@ -22,7 +22,32 @@
     (it "rejects cycles in recursively snapshotted field values"
       (let ((cycle (list "value")))
         (setf (cdr cycle) cycle)
-        (signals invalid-log-fields (make-log-record :fields (list :cycle cycle))))))
+        (signals invalid-log-fields (make-log-record :fields (list :cycle cycle))))
+      ;; Conses are walked by their own iterative spine walk; every other
+      ;; container type goes through the shared WITH-SNAPSHOT-OBJECT guard,
+      ;; so each one needs its own case or that guard is never exercised.
+      (let ((vector (make-array 1)))
+        (setf (aref vector 0) vector)
+        (signals invalid-log-fields (make-log-record :fields (list :cycle vector))))
+      (let ((table (make-hash-table)))
+        (setf (gethash :self table) table)
+        (signals invalid-log-fields (make-log-record :fields (list :cycle table))))
+      (let ((vector (make-array 1)))
+        (setf (aref vector 0) vector)
+        (signals invalid-log-fields
+          (make-log-record :fields (list :cycle (json-array vector)))))
+      (let* ((object (json-object (list (cons :k 1))))
+             (members (log-kit::%json-object-members object)))
+        ;; Reach past the constructor's validation to plant the cycle: JSON-OBJECT
+        ;; snapshots its members, so a wrapper cannot be made self-referential
+        ;; through the public API alone.
+        (setf (cdr (first members)) object)
+        (signals invalid-log-fields (make-log-record :fields (list :cycle object))))
+      ;; The same container reachable twice without being circular is a DAG and
+      ;; must still snapshot cleanly.
+      (let ((shared (vector 1 2)))
+        (expect (log-record-fields (make-log-record :fields (list :dag (list shared shared))))
+                :to-be-truthy))))
 
   (describe "constructor validation"
     (it "validates record and logger constructor arguments"
@@ -137,6 +162,47 @@
                     (make-log-record :fields (list :value value)))))))
         (expect (typep condition 'log-resource-limit-exceeded) :to-be-truthy)
         (expect (eq (log-resource-limit-resource condition) :depth) :to-be-truthy)))
+
+    (it "charges a flat list's length to the element bound, not to nesting depth"
+      ;; A cons has two children, so the obvious recursive snapshot descends
+      ;; into the CDR as well as the CAR — which silently redefines "nesting
+      ;; depth" as "list length" and rejects an ordinary
+      ;; (log-info logger "msg" :items '(1 2 ... 100)) that the equivalent
+      ;; vector or JSON array accepts. These assert the three shapes agree.
+      (let* ((length (* 2 log-kit::+max-log-field-depth+))
+             (items (loop for index below length collect index))
+             (record (make-log-record :fields (list :items items))))
+        (expect (equal (cdr (assoc :items (log-record-fields record))) items) :to-be-truthy))
+      (dolist (build (list (lambda (n) (loop for index below n collect index))
+                           (lambda (n) (make-array n :initial-element 0))
+                           (lambda (n) (json-array (loop for index below n collect index)))))
+        (let ((condition
+                (capture-limit
+                  (lambda ()
+                    (make-log-record
+                      :fields (list :items
+                                    (funcall build
+                                             (1+ log-kit::+max-log-field-array-elements+))))))))
+          (expect (typep condition 'log-resource-limit-exceeded) :to-be-truthy)
+          (expect (eq (log-resource-limit-resource condition) :array-elements) :to-be-truthy)))
+      ;; Genuine nesting still costs depth, and a long spine still cannot hide
+      ;; a cycle: both are what the iterative walk must preserve.
+      (let ((deep 0))
+        (loop repeat (1+ log-kit::+max-log-field-depth+) do (setf deep (list deep)))
+        (let ((condition (capture-limit (lambda () (make-log-record :fields (list :deep deep))))))
+          (expect (eq (log-resource-limit-resource condition) :depth) :to-be-truthy)))
+      (let ((long-cycle (loop for index below 100 collect index)))
+        (setf (cdr (last long-cycle)) long-cycle)
+        (signals invalid-log-fields (make-log-record :fields (list :cycle long-cycle))))
+      ;; A value reachable twice without being circular is a DAG, not a cycle.
+      (let* ((shared (list 1 2))
+             (record (make-log-record :fields (list :pair (list shared shared)))))
+        (expect (equal (cdr (assoc :pair (log-record-fields record))) '((1 2) (1 2)))
+                :to-be-truthy))
+      ;; A dotted tail is snapshotted like a CAR, so the shape round-trips.
+      (let ((record (make-log-record :fields (list :dotted (list* 1 2 "tail")))))
+        (expect (equal (cdr (assoc :dotted (log-record-fields record))) (list* 1 2 "tail"))
+                :to-be-truthy)))
 
     (it "sizes hash-table snapshots from bounded entry counts"
       (let* ((requested-size (1+ log-kit::+max-log-field-array-elements+))

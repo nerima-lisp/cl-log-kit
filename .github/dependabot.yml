@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # Workflow files under .github/workflows/. Nix inputs are pinned in
+  # flake.lock and are deliberately not managed here: cl-weave and
+  # cl-json-kit are pinned to the tags matching cl-log-kit.asd's own
+  # :VERSION floors, so they must be bumped in lockstep with the .asd rather
+  # than floated automatically. See the comments in flake.nix.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

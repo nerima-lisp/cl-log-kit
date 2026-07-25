@@ -93,12 +93,17 @@ as a literal JSON false, distinct from Lisp NIL.")
     (when (> nodes +max-log-field-nodes+)
       (%resource-limit-exceeded :nodes +max-log-field-nodes+ nodes))))
 
+(defun %snapshot-active-table (context)
+  "CONTEXT's EQ table of containers currently being copied, created on first
+use so a field value that contains no container never allocates one."
+  (or (%snapshot-context-active context)
+      (setf (%snapshot-context-active context)
+            (make-hash-table :test #'eq))))
+
 (defun %call-with-active-snapshot-object (context object thunk)
   "Call THUNK while OBJECT is marked as being snapshotted under CONTEXT, so a
 self-referential value is caught as a cycle instead of recursing forever."
-  (let ((active (or (%snapshot-context-active context)
-                     (setf (%snapshot-context-active context)
-                           (make-hash-table :test #'eq)))))
+  (let ((active (%snapshot-active-table context)))
     (when (gethash object active)
       (%invalid-fields object "field values must not contain cycles"))
     (setf (gethash object active) t)
@@ -111,6 +116,49 @@ active under CONTEXT, so a self-referential value is caught as a cycle. Wraps
 %CALL-WITH-ACTIVE-SNAPSHOT-OBJECT the way WITH-BOUNDED-OUTPUT wraps its own CPS
 helper, keeping each snapshot branch free of lambda boilerplate."
   `(%call-with-active-snapshot-object ,context ,object (lambda () ,@body)))
+
+(defun %snapshot-cons (value context depth)
+  "Deep-copy the cons tree rooted at VALUE, walking its CDR spine iteratively.
+
+Only the CARs — and a dotted tail — descend a level of DEPTH; the spine
+itself stays at DEPTH. Recursing on the CDR as well, the obvious reading of
+\"a cons has two children,\" would instead charge an ordinary flat list one
+level of nesting per element, so a 100-element list field would be rejected
+as 100 levels deep while the equivalent 100-element vector or JSON array
+passed. A list's *length* is therefore bounded the way every other
+collection's is — the per-collection element cap plus the shared node
+budget — and DEPTH keeps meaning what the documentation says it means.
+
+VALUE's own node was already counted by %SNAPSHOT-FIELD-VALUE; each further
+spine cons counts itself. Every spine cons is marked active for the whole
+walk, so a circular list is still rejected as a cycle rather than followed."
+  (let ((active (%snapshot-active-table context))
+        (marked nil)
+        (head nil)
+        (tail nil)
+        (length 0))
+    (unwind-protect
+        (loop for current = value then (cdr current)
+              do (cond
+                   ((consp current)
+                    (when (gethash current active)
+                      (%invalid-fields current "field values must not contain cycles"))
+                    (setf (gethash current active) t)
+                    (push current marked)
+                    (unless (eq current value)
+                      (%note-snapshot-node context depth))
+                    (%check-snapshot-size :array-elements (incf length)
+                                          +max-log-field-array-elements+)
+                    (let ((copy (cons (%snapshot-field-value (car current) context (1+ depth)) nil)))
+                      (if tail (setf (cdr tail) copy) (setf head copy))
+                      (setf tail copy)))
+                   (t
+                    ;; NIL terminates a proper list; any other atom is a dotted
+                    ;; tail and is snapshotted as a value, exactly like a CAR.
+                    (setf (cdr tail) (%snapshot-field-value current context (1+ depth)))
+                    (return head))))
+      (dolist (cons marked)
+        (remhash cons active)))))
 
 (defun %snapshot-field-value (value &optional context (depth (%constant-default 0)))
   (if (null value)
@@ -136,9 +184,7 @@ helper, keeping each snapshot branch free of lambda boilerplate."
             (string
              (%check-field-string-length value)
              (copy-seq value))
-            (cons
-             (with-snapshot-object (context value)
-               (cons (child (car value)) (child (cdr value)))))
+            (cons (%snapshot-cons value context depth))
             (array
              (%check-snapshot-size :array-elements (array-total-size value)
                                    +max-log-field-array-elements+)

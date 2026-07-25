@@ -17,10 +17,10 @@ Full documentation: <https://nerima-lisp.github.io/cl-log-kit/>
   break in a consumer's own dependency graph. `cl-log-kit/test` depends on
   `cl-weave` and `cl-json-kit`, both test-only.
 - **Semantic Versioning, enforced by CHANGELOG discipline.** Every
-  behavior change — including internal-only refactors — is recorded in
-  [`CHANGELOG.md`](CHANGELOG.md) under the version it shipped in; every
-  breaking change gets its own `### Breaking Changes` section (see
-  `## [2.0.0]`) with an explicit migration path.
+  behavior change is recorded in [`CHANGELOG.md`](CHANGELOG.md) under the
+  version it shipped in, and anything that changes the shape or behavior of
+  an exported symbol gets a major version and its own
+  `### Breaking Changes` section with an explicit migration path.
 - **A CI gate that runs the exact suite a contributor runs locally**
   (`nix flake check` drives `run-ci.lisp tests`, timeout-enforced via
   `cl-process-kit`), plus a coverage gate (`run-coverage.lisp`) that fails
@@ -96,11 +96,10 @@ require a logger as their first argument. Use the corresponding
 ;; ts=... level=ERROR logger="root" msg="request failed" field."reason"="timeout"
 ```
 
-As of 2.0.0 this is enforced, not just documented: `log-info` and its
-siblings always evaluate their first argument as the logger, so a call
-written for a pre-1.0 release as `(log-info "message")` signals a
-`type-error` — a string is not a `logger` — instead of guessing the caller
-meant `*default-logger*` from the argument count. Migrate it to either
+This is enforced, not merely documented: `log-info` and its siblings always
+evaluate their first argument as the logger, so `(log-info "message")`
+signals a `type-error` — a string is not a `logger` — rather than guessing
+from the argument count that you meant `*default-logger*`. Write either
 `(log-info logger "message")` or `(log-default-info "message")`. Use
 `with-default-logger` for a dynamically scoped default without mutating
 the process-wide default:
@@ -411,29 +410,37 @@ CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" \
   sbcl --script benchmark/run.lisp
 ```
 
-As of `1.6.0` `handle-log-record` allocates **zero bytes per call** on every
-benchmarked wire format and payload, and is 1.9–4.8x faster than the prior
-release (e.g. a short text record with three fields dropped from 1217 ns /
-145 B to ~373 ns / 0 B; a float-heavy JSON record from 2104 ns / 1140 B to
-~1120 ns / 0 B). See `CHANGELOG.md`'s `1.6.0` entry for the full before/after
-table and each optimization.
+`handle-log-record` allocates **zero bytes per call** on every benchmarked
+wire format and payload. From one run on SBCL 2.6.0 / aarch64-darwin:
+
+| Benchmark | ns/call | bytes/call |
+| --- | --- | --- |
+| `text-handler`, ASCII message + 3 fields | 392 | 0 |
+| `json-handler`, ASCII message + 3 fields | 832 | 0 |
+| `text-handler`, 256-char field value | 686 | 0 |
+| `json-handler`, 256-char field value | 1787 | 0 |
+| `json-handler`, double-float-heavy fields | 1227 | 0 |
+
+Timings are machine-specific and will move on your hardware. The
+`0 bytes/call` column is the part the test suite actually asserts, in
+`t/performance-test.lisp`'s allocation-bound specs — so a change that
+reintroduces per-call consing fails CI rather than quietly regressing.
 
 `benchmark/competitors.lisp` runs the same methodology against
 [`log4cl`](https://github.com/sharplispers/log4cl), fetched via Quicklisp
 on first run, writing an equivalent message and fields to a discarding
-stream. `cl-log-kit` is still marginally slower in that minimal
-configuration — now ~1.4x (≈373 ns/call vs `log4cl`'s ≈271 ns/call), down
-from ~5.6x — but the honest framing is unchanged: the residual gap is the
-genuine cost of work `log4cl`'s comparably-configured path does not do at
-all. `cl-log-kit` escapes and anti-spoofs every emitted token, writes a
-structured per-field record, and guarantees on every call the deep,
-cycle-checked field snapshot; canonical-key deduplication; reentrant,
-thread-safe stream serialization; and structured resource-limit conditions;
-`log4cl` writes one already-formatted message string. `cl-log-kit` is not,
-and does not claim to be, the fastest Common Lisp logging library in an
-unqualified sense — matching that would mean dropping the exactly-once,
-thread-safe write guarantee `handler.lisp` documents itself as existing to
-enforce — but the gap is now small and the throughput is allocation-free.
+stream. On that same run `cl-log-kit` was ~1.3x slower in that minimal
+configuration (477 ns/call vs `log4cl`'s 370 ns/call, both allocation-free),
+and the honest framing is that the residual gap is the genuine cost of work
+`log4cl`'s comparably-configured path does not do at all. `cl-log-kit`
+escapes and anti-spoofs every emitted token, writes a structured per-field
+record, and guarantees on every call the deep, cycle-checked field snapshot;
+canonical-key deduplication; reentrant, thread-safe stream serialization;
+and structured resource-limit conditions; `log4cl` writes one
+already-formatted message string. `cl-log-kit` is not, and does not claim to
+be, the fastest Common Lisp logging library in an unqualified sense —
+matching that would mean dropping the exactly-once, thread-safe write
+guarantee `handler.lisp` documents itself as existing to enforce.
 
 ## Testing
 
@@ -479,19 +486,22 @@ develop` instead, where the working tree is real.
 
 `run-coverage.lisp` runs the suite through `cl-weave:run-all`'s native
 `:coverage` support and **fails the build if coverage regresses** below the
-floors set in `run-coverage.lisp` (currently 93.85% expression / 98.7%
-branch — just under the 93.95% this branch has actually reached). The
-expression floor is lower than 1.7.0's because 2.0.0 gave all 101 exported
-symbols a docstring: the covered-expression count is unchanged (2887), while
-the total rose from 3000 to 3073, since `sb-cover` counts a docstring literal
-as an expression it can never observe executing.
+floors set in `run-coverage.lisp` — 93.85% expression / 98.7% branch,
+sitting just under the 93.95% / 98.77% the suite actually reaches, so
+ordinary platform variance in `sb-cover`'s own accounting cannot trip the
+gate spuriously while a real regression still does.
+
 100% is not the target: every remaining gap is either a declarative form
 with no runtime execution model (`defconstant`, `defclass`/`defstruct`
 slot lists, `defpackage` exports, `in-package`, docstrings) or a
 `defmacro`/`define-condition` body, which runs only at macroexpansion time
-and is invisible to `sb-cover`'s runtime instrumentation by construction — see `CHANGELOG.md` for the line-by-line
-audit and the experiments that confirmed each category. The HTML report is
-written to `coverage/cover-index.html`.
+and is invisible to `sb-cover`'s runtime instrumentation by construction.
+Note the direction that pushes design: the more behavior lives in a macro's
+generative template rather than in the ordinary functions it emits, the less
+of it `sb-cover` can measure at all — which is why every macro here is
+restricted to behavioral codegen. See the comment at the top of
+`run-coverage.lisp` for the full accounting. The HTML report is written to
+`coverage/cover-index.html`.
 
 ### Direct invocation, without the timeout wrapper
 
@@ -502,6 +512,17 @@ suite itself; on systems without it, run the command without the prefix.
 CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" timeout 120s sbcl --script run-tests.lisp
 CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" timeout 120s sbcl --script run-coverage.lisp
 ```
+
+## Contributing and Support
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development environment, the two
+  project constraints a change should not violate, and what a pull request
+  needs.
+- [SUPPORT.md](SUPPORT.md) — supported environments and what to include in a
+  report.
+- [SECURITY.md](SECURITY.md) — private vulnerability reporting, and what
+  counts as a security defect in a library that renders untrusted input.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## License
 

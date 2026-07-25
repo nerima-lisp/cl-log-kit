@@ -63,6 +63,40 @@
         (expect (probe-file (merge-pathnames "app-2026-07-24.log" dir)) :to-be-truthy)
         (expect (probe-file (merge-pathnames "app-2026-07-25.log" dir)) :to-be-truthy))))
 
+  (it "purges retention for an extension-less base pathname too"
+    ;; Every other spec here uses "app.log". A base with no type — "app",
+    ;; "/var/log/myapp" — is just as ordinary, and it used to disable
+    ;; retention *silently*: the writer derives "app-2026-07-22" from
+    ;; :DEFAULTS (no type), while the purge glob interpolated the NIL type
+    ;; into "app-*.NIL", which matches nothing. Nothing errored; the disk
+    ;; just filled up forever.
+    (with-fresh-log-directory (dir)
+      (let* ((base (merge-pathnames "app" dir))
+             (handler (make-rotating-file-handler
+                       base :max-files 2
+                       :clock (popping-clock '("2026-07-22" "2026-07-23" "2026-07-24" "2026-07-25")))))
+        (dotimes (n 4)
+          (handle-log-record handler (make-log-record :message (format nil "day~D" n))))
+        (close-handler handler)
+        (expect (probe-file (merge-pathnames "app-2026-07-22" dir)) :to-be nil)
+        (expect (probe-file (merge-pathnames "app-2026-07-23" dir)) :to-be nil)
+        (expect (probe-file (merge-pathnames "app-2026-07-24" dir)) :to-be-truthy)
+        (expect (probe-file (merge-pathnames "app-2026-07-25" dir)) :to-be-truthy))))
+
+  (it "keeps the retention glob confined to its own base pathname's shape"
+    ;; The widened glob must not start sweeping up neighbouring files: an
+    ;; extension-less base matches only extension-less rotations, and a
+    ;; "*.log" base only ".log" ones.
+    (with-fresh-log-directory (dir)
+      (dolist (name '("app-2026-07-22" "app-2026-07-23.log" "other-2026-07-22"))
+        (close (open (merge-pathnames name dir) :direction :output :if-does-not-exist :create)))
+      (flet ((matches (base)
+               (sort (mapcar #'file-namestring
+                             (directory (log-kit::%rotated-log-glob (merge-pathnames base dir))))
+                     #'string<)))
+        (expect (matches "app") :to-equal '("app-2026-07-22"))
+        (expect (matches "app.log") :to-equal '("app-2026-07-23.log")))))
+
   (it "writes JSON when :wire-format :json is requested"
     (with-fresh-log-directory (dir)
       (let* ((base (merge-pathnames "app.log" dir))

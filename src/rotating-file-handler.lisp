@@ -67,9 +67,20 @@ rotated files (including the current one) are kept, oldest deleted first;
   "A wild pathname matching every rotated file for BASE-PATHNAME. Built by
 parsing a namestring rather than MAKE-PATHNAME: MAKE-PATHNAME treats a `*`
 inside a plain :NAME string as a literal character to match, not a wildcard
-marker, so it cannot produce a wild pathname component on its own."
-  (merge-pathnames (format nil "~A-*.~A" (pathname-name base-pathname) (pathname-type base-pathname))
-                   (make-pathname :name nil :type nil :defaults base-pathname)))
+marker, so it cannot produce a wild pathname component on its own.
+
+The type is appended only when BASE-PATHNAME actually has one. An
+extension-less base — \"app\", \"/var/log/myapp\" — is an ordinary thing to
+pass, and %ROTATED-LOG-PATHNAME writes its rotated files with no type at all
+(\"app-2026-07-25\"); interpolating a NIL type here instead produced the glob
+\"app-*.NIL\", which matches nothing, so :MAX-FILES silently retained every
+file forever. The glob has to describe the same shape the writer produces."
+  (let ((name (pathname-name base-pathname))
+        (type (pathname-type base-pathname)))
+    (merge-pathnames (if type
+                         (format nil "~A-*.~A" name type)
+                         (format nil "~A-*" name))
+                     (make-pathname :name nil :type nil :defaults base-pathname))))
 
 (defun %open-rotation-stream-handler (wire-format pathname auto-flush)
   (let ((stream (open pathname :direction :output :if-exists :append :if-does-not-exist :create

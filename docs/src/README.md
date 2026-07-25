@@ -67,7 +67,7 @@ with duplicate output paths.
 
 ## Status
 
-Version 2.0.0. `cl-log-kit` is a small, stable surface — see the
+Version 1.0.0. `cl-log-kit` is a small, stable surface — see the
 [API Reference](api-reference.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
 suite documented in [Testing and Coverage](testing.md):
