@@ -3,9 +3,12 @@ contact_links:
   - name: Documentation
     url: https://nerima-lisp.github.io/cl-log-kit/
     about: Quick start, handler reference, and the full list of exported symbols.
+  - name: Supported environments
+    url: https://nerima-lisp.github.io/cl-log-kit/compatibility/
+    about: Which SBCL platforms are supported and what the stability promise covers.
   - name: Support
-    url: https://github.com/nerima-lisp/cl-log-kit/blob/main/SUPPORT.md
-    about: Supported environments and what to include in a report.
+    url: https://github.com/nerima-lisp/.github/blob/main/SUPPORT.md
+    about: How the org handles questions and what to include in a report.
   - name: Security reporting
     url: https://github.com/nerima-lisp/cl-log-kit/security/advisories/new
     about: Report vulnerabilities privately, never in a public issue.
