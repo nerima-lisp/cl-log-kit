@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pages: write # configure-pages needs this to create the site when it is off.
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +44,15 @@ jobs:
           cp -rL result public
           chmod -R u+w public
 
+      # enablement: true makes this step turn Pages on (as a
+      # build_type: workflow site) instead of failing with "Get Pages site
+      # failed" when it is off. Without it the job's success depends on a
+      # repository setting that lives outside the repository, which is
+      # exactly how every documentation link in README.md, SUPPORT.md, and
+      # docs/src/ came to point at a 404.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v4
         with:
           path: public
