@@ -6,6 +6,8 @@ A dependency-free, SBCL-only structured logging toolkit for Common Lisp.
 them. Each built-in handler emits a record through one
 `handle-log-record` method, preventing duplicate output paths.
 
+Full documentation: <https://nerima-lisp.github.io/cl-log-kit/>
+
 ## Installation
 
 Clone the repository somewhere ASDF can find it, then load the system:
@@ -145,6 +147,30 @@ precedence over dynamic context fields, which take precedence over logger
 fields. `logger-with` remains available as the fields-only derivation
 shortcut.
 
+### Propagating context across threads
+
+`with-log-context` and `with-log-span` use ordinary dynamic variables, which
+`sb-thread:make-thread` does not inherit — a worker thread starts with no
+context, even one spawned from inside a `with-log-context` or
+`with-log-span` body. `capture-log-context` snapshots the calling thread's
+active context fields and span id; `with-captured-log-context` restores that
+snapshot, typically inside a new thread:
+
+```lisp
+(with-log-context (:request-id "abc123")
+  (let ((snapshot (capture-log-context)))
+    (sb-thread:make-thread
+      (lambda ()
+        (with-captured-log-context (snapshot)
+          (log-info *logger* "handling request on a worker thread"))))))
+```
+
+`with-captured-log-context` replaces the active context and span id with the
+snapshot's rather than merging into it, so a snapshot captured before any
+`with-log-context` restores an empty context even where it is used inside
+one. `call-with-captured-log-context` is the underlying function for callers
+building their own thread-spawning helper.
+
 ## Handlers
 
 ### Text
@@ -212,6 +238,31 @@ condition before proceeding.
 forwards flush and close operations. `make-function-handler` adapts a
 record callback plus optional zero-argument flush and close callbacks.
 `make-null-handler` discards records.
+
+`make-processor-handler` runs a chain of enrichment functions — each a
+function of the record so far returning a fields plist to merge in, or
+`nil` — over every record before forwarding it to a target handler, for
+data every record should carry without every call site passing it
+explicitly. Contributed fields are always merged under whatever the record
+already carried before any processor ran, so a processor can enrich but
+never override real call-site or logger data; among the processors
+themselves, a later one overrides an earlier one at the same key.
+
+`make-rotating-file-handler` writes to a file whose name is derived from a
+base pathname and a zero-argument clock (today's local date by default),
+opening a fresh file whenever the clock's value changes and pruning rotated
+files beyond an optional `:max-files` retention count, oldest first.
+
+`make-buffered-handler` holds records back until one at or above
+`:trigger-level` (default `+level-error+`) arrives, then releases everything
+held — including the triggering record — to a target handler in order;
+`:buffer-size` bounds how many records are held while waiting, oldest
+dropped first, and `:stop-buffering` (default `t`) controls whether the
+handler stays activated afterward or goes back to buffering. `flush-handler`
+and `close-handler` never force an unreleased buffer out.
+
+See [Handlers](https://nerima-lisp.github.io/cl-log-kit/handlers/) for the
+full discussion, including worked examples of all three.
 
 Composition handlers admit each handle or flush operation atomically. An
 operation admitted before close starts finishes before close invokes child
@@ -313,11 +364,52 @@ deterministic tests:
 (make-logger :clock (lambda () 0))
 ```
 
+## Performance
+
+`benchmark/run.lisp` is a reproducible SBCL benchmark (minimum wall-clock
+time and bytes consed per call, over several full-GC'd repetitions) for
+`handle-log-record` under representative payloads:
+
+```sh
+CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" \
+  sbcl --script benchmark/run.lisp
+```
+
+As of `1.6.0` `handle-log-record` allocates **zero bytes per call** on every
+benchmarked wire format and payload, and is 1.9–4.8x faster than the prior
+release (e.g. a short text record with three fields dropped from 1217 ns /
+145 B to ~373 ns / 0 B; a float-heavy JSON record from 2104 ns / 1140 B to
+~1120 ns / 0 B). See `CHANGELOG.md`'s `1.6.0` entry for the full before/after
+table and each optimization.
+
+`benchmark/competitors.lisp` runs the same methodology against
+[`log4cl`](https://github.com/sharplispers/log4cl), fetched via Quicklisp
+on first run, writing an equivalent message and fields to a discarding
+stream. `cl-log-kit` is still marginally slower in that minimal
+configuration — now ~1.4x (≈373 ns/call vs `log4cl`'s ≈271 ns/call), down
+from ~5.6x — but the honest framing is unchanged: the residual gap is the
+genuine cost of work `log4cl`'s comparably-configured path does not do at
+all. `cl-log-kit` escapes and anti-spoofs every emitted token, writes a
+structured per-field record, and guarantees on every call the deep,
+cycle-checked field snapshot; canonical-key deduplication; reentrant,
+thread-safe stream serialization; and structured resource-limit conditions;
+`log4cl` writes one already-formatted message string. `cl-log-kit` is not,
+and does not claim to be, the fastest Common Lisp logging library in an
+unqualified sense — matching that would mean dropping the exactly-once,
+thread-safe write guarantee `handler.lisp` documents itself as existing to
+enforce — but the gap is now small and the throughput is allocation-free.
+
 ## Testing
 
-Tests depend on [`cl-weave`](https://github.com/nerima-lisp/cl-weave); point
-`CL_SOURCE_REGISTRY` at both repositories, or use the flake, which wires this
-up automatically. Both are test/dev-only dependencies — the `cl-log-kit`
+The `cl-log-kit/test` ASDF system depends on
+[`cl-weave`](https://github.com/nerima-lisp/cl-weave) and
+[`cl-json-kit`](https://github.com/nerima-lisp/cl-json-kit) (an independent
+JSON parser used to assert `json-handler` output parses back to the expected
+structure, not just contains the right substrings). `run-ci.lisp` also loads
+[`cl-process-kit`](https://github.com/nerima-lisp/cl-process-kit) directly,
+for its own timeout enforcement — not as an ASDF dependency of either system.
+Point `CL_SOURCE_REGISTRY` at all three repositories, or use the flake, which
+wires this up automatically. All three are test/dev-only — the `cl-log-kit`
 system itself stays dependency-free.
 
 ### Recommended: `run-ci.lisp`
@@ -330,13 +422,13 @@ a shell `timeout`. It exits `124` if the timeout fires, matching the
 `timeout(1)` convention.
 
 ```sh
-CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-process-kit//:$(pwd)//:" \
+CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-process-kit//:/path/to/cl-json-kit//:$(pwd)//:" \
   sbcl --script run-ci.lisp tests              # default timeout: 120s
-CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-process-kit//:$(pwd)//:" \
+CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-process-kit//:/path/to/cl-json-kit//:$(pwd)//:" \
   sbcl --script run-ci.lisp coverage 180       # explicit timeout in seconds
 ```
 
-The flake wires up both dependencies automatically:
+The flake wires up all three dependencies automatically:
 
 ```sh
 nix run .#test                                          # apps.test, no shell timeout needed
@@ -351,12 +443,15 @@ develop` instead, where the working tree is real.
 
 `run-coverage.lisp` runs the suite through `cl-weave:run-all`'s native
 `:coverage` support and **fails the build if coverage regresses** below the
-floors set in `run-coverage.lisp` (currently 95.0% expression / 98.0%
-branch — just under the 95.44%/98.21% this branch has actually reached).
-Every remaining gap above that floor is confirmed non-executable by
-construction or an sb-cover/SBCL instrumentation artifact; see
-`CHANGELOG.md` for the line-by-line audit. The HTML report is written to
-`coverage/cover-index.html`.
+floors set in `run-coverage.lisp` (currently 95.9% expression / 98.0%
+branch — just under the 95.98%/98.52% this branch has actually reached).
+100% is not the target: every remaining gap is either a declarative form
+with no runtime execution model (`defconstant`, `defclass`/`defstruct`
+slot lists, `defpackage` exports, `in-package`) or a `defmacro` body, which
+runs only at macroexpansion time and is invisible to `sb-cover`'s runtime
+instrumentation by construction — see `CHANGELOG.md` for the line-by-line
+audit and the experiments that confirmed each category. The HTML report is
+written to `coverage/cover-index.html`.
 
 ### Direct invocation, without the timeout wrapper
 
@@ -364,8 +459,8 @@ construction or an sb-cover/SBCL instrumentation artifact; see
 suite itself; on systems without it, run the command without the prefix.
 
 ```sh
-CL_SOURCE_REGISTRY="/path/to/cl-weave//:$(pwd)//:" timeout 120s sbcl --script run-tests.lisp
-CL_SOURCE_REGISTRY="/path/to/cl-weave//:$(pwd)//:" timeout 120s sbcl --script run-coverage.lisp
+CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" timeout 120s sbcl --script run-tests.lisp
+CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" timeout 120s sbcl --script run-coverage.lisp
 ```
 
 ## License

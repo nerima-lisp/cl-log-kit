@@ -55,6 +55,36 @@
       # not a dependency of the cl-log-kit or cl-log-kit/test systems, so
       # the shipped library stays dependency-free.
       sourceRegistry = "${self}//:${cl-weave}//:${cl-process-kit}//:${cl-json-kit}//";
+
+      # Builds docs/ (MkDocs + Material) fully offline: Material for MkDocs
+      # bundles all of its assets, so no network access is required inside
+      # the Nix sandbox. --strict promotes broken links and unlisted pages
+      # to build failures.
+      mkDocs =
+        pkgs:
+        pkgs.stdenvNoCC.mkDerivation {
+          pname = "cl-log-kit-docs";
+          version = "1.6.0";
+          src = pkgs.lib.fileset.toSource {
+            root = ./docs;
+            fileset = pkgs.lib.fileset.unions [
+              ./docs/mkdocs.yml
+              ./docs/src
+            ];
+          };
+          nativeBuildInputs = [ pkgs.python3Packages.mkdocs-material ];
+          buildPhase = ''
+            runHook preBuild
+            mkdocs build --strict --config-file mkdocs.yml --site-dir "$out"
+            runHook postBuild
+          '';
+          dontInstall = true;
+          meta = {
+            description = "Rendered MkDocs (Material) documentation for cl-log-kit";
+            homepage = "https://github.com/nerima-lisp/cl-log-kit";
+            license = pkgs.lib.licenses.mit;
+          };
+        };
     in
     {
       packages = forAllSystems (
@@ -65,10 +95,11 @@
         rec {
           cl-log-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "1.1.0";
+            version = "1.6.0";
             src = self;
             systems = [ "cl-log-kit" ];
           };
+          docs = mkDocs pkgs;
           default = cl-log-kit;
         }
       );
