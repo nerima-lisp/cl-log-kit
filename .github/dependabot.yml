@@ -14,3 +14,17 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # The `uses:` pins inside .github/actions/nix-setup/action.yml are invisible
+  # to the `directory: /` entry above, which only scans .github/workflows/.
+  # Without this entry the nix-installer and cachix-action SHAs — the two
+  # actions every workflow in this repository runs — would never be bumped.
+  - package-ecosystem: github-actions
+    directory: /.github/actions/nix-setup
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      nix-setup-actions:
+        patterns:
+          - "*"
