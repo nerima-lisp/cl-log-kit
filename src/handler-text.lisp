@@ -5,6 +5,14 @@
 ;;; untrusted token escaped so a log line can never be spoofed or split.
 (in-package #:log-kit)
 
+;;; This file's hot path runs on every enabled log call. SAFETY 1 (not 0)
+;;; keeps ordinary type checking — including the resource-limit guards
+;;; elsewhere in the library that depend on catchable type/range errors —
+;;; while SPEED 3 lets SBCL apply the same optimizations a caller would get
+;;; from per-function (OPTIMIZE ...) declarations, without repeating them
+;;; on every DEFUN in the file.
+(declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
+
 ;;; FLOAT-INFINITY-P / FLOAT-NAN-P decode a float's raw bit pattern (exponent
 ;;; and mantissa fields); they never perform a trapping floating-point
 ;;; operation, so unlike arithmetic on a non-finite float, calling them here
@@ -14,10 +22,12 @@
       (not (or (sb-ext:float-infinity-p value) (sb-ext:float-nan-p value)))))
 
 (defun %safe-text-value-string (value)
+  "Render VALUE for a caller that has already special-cased plain integers
+(their decimal digits can never need escaping, so %WRITE-TEXT-VALUE writes
+them directly and never reaches this function for an INTEGER)."
   (typecase value
     (string value)
     (character (string value))
-    (integer (format nil "~D" value))
     (float (if (%safe-text-finite-number-p value)
                (format nil "~G" value)
                "<non-finite-float>"))
@@ -28,7 +38,7 @@
          (format nil "(~A ~:[-~;+~] ~Ai)" (realpart value) (minusp (imagpart value))
                  (abs (imagpart value)))
          "<non-finite-complex>"))
-    (symbol (if (keywordp value) (string-downcase (symbol-name value)) (symbol-name value)))
+    (symbol (%symbol-field-string value))
     (t "#<object>")))
 
 (defun %text-spoof-character-p (code)
@@ -41,22 +51,51 @@ rendered log line look different from what it actually contains."
       (= code #xFEFF)))
 
 (defun %write-text-value (value stream)
-  (loop for character across (%safe-text-value-string value)
-        for code = (char-code character)
-        do (cond
-             ((char= character #\\) (write-string "\\\\" stream))
-             ((char= character #\") (write-string "\\\"" stream))
-             ((char= character #\Newline) (write-string "\\n" stream))
-             ((char= character #\Return) (write-string "\\r" stream))
-             ((char= character #\Tab) (write-string "\\t" stream))
-             ((or (< code 32) (= code 127) (= code #x2028) (= code #x2029)
-                  (<= #xD800 code #xDFFF) (%text-spoof-character-p code))
-              (%write-unicode-escape code stream))
-             (t (write-char character stream)))))
+  ;; An integer's decimal digits and optional leading minus sign can never
+  ;; contain an escape-worthy character, so writing it directly skips both
+  ;; %SAFE-TEXT-VALUE-STRING's intermediate string and the run-scanning
+  ;; loop below entirely — the common case for numeric fields.
+  (if (integerp value)
+      (princ value stream)
+      (let* ((text (%safe-text-value-string value))
+             (length (length text))
+             (run-start 0))
+        (declare (type fixnum length run-start))
+        (flet ((flush-run (end)
+                 (declare (type fixnum end))
+                 (when (< run-start end)
+                   (write-string text stream :start run-start :end end))))
+          (dotimes (index length)
+            (declare (type fixnum index))
+            (let* ((character (char text index))
+                   (code (char-code character))
+                   (escape (case character
+                             (#\\ "\\\\")
+                             (#\" "\\\"")
+                             (#\Newline "\\n")
+                             (#\Return "\\r")
+                             (#\Tab "\\t")
+                             (otherwise nil))))
+              (cond
+                (escape
+                 (flush-run index)
+                 (write-string escape stream)
+                 (setf run-start (1+ index)))
+                ((or (< code 32) (= code 127) (= code #x2028) (= code #x2029)
+                     (<= #xD800 code #xDFFF) (%text-spoof-character-p code))
+                 (flush-run index)
+                 (%write-unicode-escape code stream)
+                 (setf run-start (1+ index))))))
+          (flush-run length)))))
 
 (defun %write-text-record (record output)
-  (format output "ts=~D level=~A logger=\"" (log-record-timestamp record)
-          (level-name (log-record-level record)))
+  ;; A direct WRITE-STRING/PRINC sequence avoids FORMAT's control-string
+  ;; interpretation overhead on this always-executed prefix of every record.
+  (write-string "ts=" output)
+  (princ (log-record-timestamp record) output)
+  (write-string " level=" output)
+  (write-string (level-name (log-record-level record)) output)
+  (write-string " logger=\"" output)
   (%write-text-value (%log-record-logger-name record) output)
   (write-string "\" msg=\"" output)
   (%write-text-value (%log-record-message record) output)

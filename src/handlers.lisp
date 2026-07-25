@@ -12,8 +12,8 @@
    (error-policy :initarg :error-policy :initform :signal :reader %composition-error-policy)
    (error-callback :initarg :error-callback :initform nil :reader %composition-error-callback)))
 
-(defmethod initialize-instance :after ((instance multi-handler) &key (handlers nil)
-                                       (error-policy :signal) error-callback)
+(defmethod initialize-instance :after ((instance multi-handler) &key (handlers (%constant-default nil))
+                                       (error-policy (%constant-default :signal)) error-callback)
   (unless (%proper-list-p handlers)
     (%invalid-fields handlers "handler collection must be a finite proper list"))
   (dolist (target handlers)
@@ -23,7 +23,7 @@
   (%validate-error-policy error-policy error-callback)
   (setf (slot-value instance 'handlers) (copy-list handlers)))
 
-(defun make-multi-handler (handlers &key (error-policy :signal) error-callback)
+(defun make-multi-handler (handlers &key (error-policy (%constant-default :signal)) error-callback)
   (make-instance 'multi-handler :handlers handlers :error-policy error-policy
                                 :error-callback error-callback))
 
@@ -130,11 +130,22 @@ close for the rest."
   (declare (ignore record))
   handler)
 
-(defun make-text-handler (&key (stream *standard-output*) (auto-flush t) (owns-stream nil))
-  (make-instance 'text-handler :stream stream :auto-flush auto-flush :owns-stream owns-stream))
+(defmacro define-stream-handler-constructors (&body specs)
+  "Generate one MAKE-<NAME>-HANDLER constructor per (constructor class) pair in
+SPECS, matching the data-table style DEFINE-LOG-LEVEL-MACROS already uses for
+the LOG-<LEVEL> family: the shared :stream/:auto-flush/:owns-stream surface is
+written once, and each generated function is a plain, directly testable defun."
+  `(progn
+     ,@(loop for (constructor class) in specs
+             collect `(defun ,constructor (&key (stream (%constant-default *standard-output*))
+                                                 (auto-flush (%constant-default t))
+                                                 (owns-stream (%constant-default nil)))
+                        (make-instance (quote ,class) :stream stream :auto-flush auto-flush
+                                       :owns-stream owns-stream)))))
 
-(defun make-json-handler (&key (stream *standard-output*) (auto-flush t) (owns-stream nil))
-  (make-instance 'json-handler :stream stream :auto-flush auto-flush :owns-stream owns-stream))
+(define-stream-handler-constructors
+  (make-text-handler text-handler)
+  (make-json-handler json-handler))
 
 (defgeneric handler-open-p (handler)
   (:documentation "Return true when HANDLER currently accepts handle and flush operations."))

@@ -5,6 +5,14 @@
 ;;; so a partially written object can never reach the stream.
 (in-package #:log-kit)
 
+;;; This file's hot path runs on every enabled log call. SAFETY 1 (not 0)
+;;; keeps ordinary type checking — including the resource-limit guards
+;;; elsewhere in the library that depend on catchable type/range errors —
+;;; while SPEED 3 lets SBCL apply the same optimizations a caller would get
+;;; from per-function (OPTIMIZE ...) declarations, without repeating them
+;;; on every DEFUN in the file.
+(declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
+
 (defun %json-key-string (key)
   (etypecase key
     (string key)
@@ -24,20 +32,36 @@
 (defun %write-json-string (value stream)
   (%validate-json-string value)
   (write-char #\" stream)
-  (loop for character across value
-        do (case character
-             (#\" (write-string "\\\"" stream))
-             (#\\ (write-string "\\\\" stream))
-             (#\Backspace (write-string "\\b" stream))
-             (#\Page (write-string "\\f" stream))
-             (#\Newline (write-string "\\n" stream))
-             (#\Return (write-string "\\r" stream))
-             (#\Tab (write-string "\\t" stream))
-             (otherwise
-              (let ((code (char-code character)))
-                (if (or (< code 32) (= code 127))
-                    (%write-unicode-escape code stream)
-                    (write-char character stream))))))
+  (let ((length (length value))
+        (run-start 0))
+    (declare (type fixnum length run-start))
+    (flet ((flush-run (end)
+             (declare (type fixnum end))
+             (when (< run-start end)
+               (write-string value stream :start run-start :end end))))
+      (dotimes (index length)
+        (declare (type fixnum index))
+        (let* ((character (char value index))
+               (code (char-code character))
+               (escape (case character
+                         (#\" "\\\"")
+                         (#\\ "\\\\")
+                         (#\Backspace "\\b")
+                         (#\Page "\\f")
+                         (#\Newline "\\n")
+                         (#\Return "\\r")
+                         (#\Tab "\\t")
+                         (otherwise nil))))
+          (cond
+            (escape
+             (flush-run index)
+             (write-string escape stream)
+             (setf run-start (1+ index)))
+            ((or (< code 32) (= code 127))
+             (flush-run index)
+             (%write-unicode-escape code stream)
+             (setf run-start (1+ index))))))
+      (flush-run length)))
   (write-char #\" stream))
 
 (defun %finite-float-p (value)
@@ -54,14 +78,16 @@
              (*print-readably* t)
              (*print-base* 10)
              (*print-radix* nil)
-             (rendered (string-downcase (write-to-string value)))
-             ;; SBCL's printer marks single/double/short/long floats with a
-             ;; letter exponent (1.5f0, 1.5d0, ...); JSON has no exponent
-             ;; letter but 'e', so every implementation-specific marker
-             ;; collapses onto the one JSON accepts.
-             (normalized (substitute #\e #\d (substitute #\e #\f (substitute #\e #\s
-                          (substitute #\e #\l rendered))))))
-        (write-string normalized stream))))
+             (rendered (write-to-string value)))
+        ;; SBCL's printer marks single/double/short/long floats with a
+        ;; letter exponent (1.5f0, 1.5d0, ...); JSON has no exponent letter
+        ;; but 'e', so every implementation-specific marker collapses onto
+        ;; the one JSON accepts. Downcasing and normalizing in one pass over
+        ;; RENDERED, writing straight to STREAM, avoids the STRING-DOWNCASE
+        ;; plus four SUBSTITUTE calls each allocating a full extra copy.
+        (loop for character across rendered
+              for lower = (char-downcase character)
+              do (write-char (case lower ((#\s #\f #\d #\l) #\e) (otherwise lower)) stream)))))
 
 (defun %write-json-object (object stream)
   (%write-json-members (%json-object-members object) stream))
@@ -85,7 +111,7 @@
     ((integerp value) (format stream "~D" value))
     ((floatp value) (%write-json-float value stream))
     ((symbolp value)
-     (%write-json-string (if (keywordp value) (string-downcase (symbol-name value)) (symbol-name value))
+     (%write-json-string (%symbol-field-string value)
                          stream))
     (t (error 'unsupported-json-value :value value
               :reason "supported values are explicit JSON values, strings, integers, finite floats, and symbols"))))
@@ -125,7 +151,7 @@ object. Shared by %WRITE-JSON-OBJECT (explicit nested objects) and the record
        (error 'unsupported-json-value :value value :reason "JSON numbers must be finite"))
      value)
     ((symbolp value)
-     (%validate-json-string (if (keywordp value) (string-downcase (symbol-name value)) (symbol-name value))))
+     (%validate-json-string (%symbol-field-string value)))
     (t (error 'unsupported-json-value :value value
               :reason "supported values are explicit JSON values, strings, integers, finite floats, and symbols"))))
 

@@ -43,6 +43,18 @@
         (signals program-error
           (make-instance 'logger :fields cycle :%fields-snapshot t))))
 
+    (it "%validate-logger-initargs itself rejects an unrecognized initarg"
+      ;; (MAKE-INSTANCE 'LOGGER :UNKNOWN T) above is rejected by SBCL's own
+      ;; MAKE-INSTANCE optimizer for a literal, compile-time-constant class
+      ;; name — it never reaches INITIALIZE-INSTANCE at all, so the
+      ;; PROGRAM-ERROR it signals is SBCL's own INITARG-ERROR (a
+      ;; PROGRAM-ERROR subtype), not %VALIDATE-LOGGER-INITARGS's own
+      ;; unknown-key guard. Driving ALLOCATE-INSTANCE and INITIALIZE-INSTANCE
+      ;; directly bypasses that optimizer and reaches the real method, so
+      ;; this specifically exercises %VALIDATE-LOGGER-INITARGS's own check.
+      (let ((instance (allocate-instance (find-class 'logger))))
+        (signals program-error (initialize-instance instance :unknown t))))
+
     (it "public record readers have no setf functions"
       (dolist (reader '((setf log-record-level)
                         (setf log-record-message)

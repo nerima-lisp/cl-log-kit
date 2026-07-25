@@ -6,6 +6,11 @@
 ;;; record a true point-in-time snapshot the caller can no longer mutate.
 (in-package #:log-kit)
 
+;;; This file's recursive snapshot walk runs on every field of every enabled
+;;; log call. SAFETY 1 (not 0) keeps the type/range checks the resource
+;;; limits below depend on; SPEED 3 optimizes the traversal itself.
+(declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
+
 (defun %canonical-field-name (key)
   (let ((name (etypecase key
                 (symbol (symbol-name key))
@@ -94,7 +99,7 @@ active under CONTEXT, so a self-referential value is caught as a cycle. Wraps
 helper, keeping each snapshot branch free of lambda boilerplate."
   `(%call-with-active-snapshot-object ,context ,object (lambda () ,@body)))
 
-(defun %snapshot-field-value (value &optional context (depth 0))
+(defun %snapshot-field-value (value &optional context (depth (%constant-default 0)))
   (if (null value)
       nil
       (let ((context (or context *field-snapshot-context* (%make-snapshot-context))))

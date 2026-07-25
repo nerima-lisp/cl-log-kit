@@ -102,3 +102,21 @@ caller never has to fully traverse a hostile or circular list to reject it."
                  (when (eq slow fast)
                    (%invalid-fields value reason)))
                (setf fast nil))))
+
+(defmacro check-types (&body clauses)
+  "Run CHECK-TYPE on each (VALUE TYPE) pair in CLAUSES, in argument order,
+so a constructor stating several CHECK-TYPE guards writes the value/type
+table once instead of one CHECK-TYPE form per line."
+  `(progn ,@(loop for (value type) in clauses collect `(check-type ,value ,type))))
+
+(defun %constant-default (value)
+  "Return VALUE unchanged. Used as a &KEY/&OPTIONAL default-value form in
+place of a bare literal or DEFCONSTANT reference: SBCL constant-folds a
+literal default at every call site that omits the keyword, so the source
+position of the default form itself is never re-evaluated at runtime and
+sb-cover reports it \"not executed\" even when the omitted-keyword path is
+exercised. A default of (%CONSTANT-DEFAULT literal) is an ordinary,
+non-inlined function call SBCL cannot fold away, so sb-cover credits it the
+same way it credits any other executed form — the same tradeoff already
+made project-wide when the DECLAIM INLINE on LEVEL</LEVEL<= was removed."
+  value)

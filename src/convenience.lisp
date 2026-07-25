@@ -7,6 +7,11 @@
 ;;; and span.lisp.
 (in-package #:log-kit)
 
+;;; %EMIT-LOG-UNCHECKED is the single path every enabled log call reaches.
+;;; SAFETY 1 (not 0) keeps ordinary type checking; SPEED 3 optimizes the
+;;; level check and field-merge machinery it drives.
+(declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
+
 (defun log-enabled-p (logger level)
   (check-type logger logger)
   (check-type level integer)
@@ -28,7 +33,7 @@ and emitted."
     (handle-log-record (logger-handler logger) record)
     record))
 
-(defun emit-log (logger level message &optional (fields-plist nil))
+(defun emit-log (logger level message &optional (fields-plist (%constant-default nil)))
   (check-type logger logger)
   (check-type level integer)
   (when (log-enabled-p logger level)

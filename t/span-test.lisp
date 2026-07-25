@@ -87,14 +87,13 @@
         (expect exit-fields :to-have-field :span-outcome :nonlocal-exit)
         (expect exit-fields :to-have-field :span-duration 4)))))
 
-(progn
-  (defclass end-failing-handler (counting-handler) ())
+(defclass end-failing-handler (counting-handler) ())
 
-  (defmethod handle-log-record ((handler end-failing-handler) record)
-    (call-next-method)
-    (when (eq (cdr (assoc :span-event (log-record-fields record))) :end)
-      (error "end handler failed"))
-    handler))
+(defmethod handle-log-record ((handler end-failing-handler) record)
+  (call-next-method)
+  (when (eq (cdr (assoc :span-event (log-record-fields record))) :end)
+    (error "end handler failed"))
+  handler)
 (describe "span cleanup failures"
   (it "preserves the body error when the ending clock fails"
     (multiple-value-bind (logger handler) (counting-logger)

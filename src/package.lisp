@@ -53,10 +53,16 @@
     #:filter-handler
     #:function-handler
     #:null-handler
+    #:processor-handler
+    #:rotating-file-handler
+    #:buffered-handler
     #:make-multi-handler
     #:make-filter-handler
     #:make-function-handler
     #:make-null-handler
+    #:make-processor-handler
+    #:make-rotating-file-handler
+    #:make-buffered-handler
     #:make-text-handler
     #:make-json-handler
     #:handler-open-p
@@ -92,6 +98,11 @@
     #:log-default-fatal
     #:condition-fields
     #:log-condition
-    #:with-log-span))
+    #:with-log-span
+    #:log-context-snapshot
+    #:log-context-snapshot-p
+    #:capture-log-context
+    #:call-with-captured-log-context
+    #:with-captured-log-context))
 
 (in-package #:log-kit)

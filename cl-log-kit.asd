@@ -2,7 +2,7 @@
 (asdf:defsystem "cl-log-kit"
   :description "Dependency-free, SBCL-only structured logging toolkit for Common Lisp"
   :long-description "A slog-inspired (Go log/slog) structured logging toolkit built around a Handler protocol (handle-log-record) that guarantees each log record is emitted exactly once."
-  :version "1.1.0"
+  :version "1.5.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -28,14 +28,18 @@
                (:file "lifecycle")
                (:file "handlers")
                (:file "convenience")
+               (:file "processor-handler")
+               (:file "rotating-file-handler")
+               (:file "buffered-handler")
                (:file "condition-logging")
-               (:file "span"))
+               (:file "span")
+               (:file "thread-context"))
   :in-order-to ((asdf:test-op (asdf:test-op "cl-log-kit/test"))))
 
 (asdf:defsystem "cl-log-kit/test"
   :description "Test system for cl-log-kit"
   :long-description "Regression tests for the cl-log-kit public API."
-  :version "1.1.0"
+  :version "1.5.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -43,12 +47,12 @@
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")
   :depends-on ("cl-log-kit"
-               (:version "cl-weave" "0.10.0")
+               (:version "cl-weave" "0.11.0")
                ;; Test-only: an independent nerima-lisp JSON parser used to
                ;; assert json-handler output parses back to the expected
                ;; structure, not just contains the right substrings. The
                ;; shipped cl-log-kit system stays dependency-free.
-               (:version "cl-json-kit" "0.2.0"))
+               (:version "cl-json-kit" "0.3.0"))
   :pathname "t"
   :serial t
   :components ((:file "package")
@@ -56,9 +60,17 @@
                (:file "matchers")
                (:file "record-test")
                (:file "handler-test")
+               (:file "handler-text-test")
+               (:file "handler-json-test")
                (:file "logger-test")
-               (:file "composition-test")
+               (:file "handlers-test")
+               (:file "lifecycle-test")
+               (:file "processor-handler-test")
+               (:file "rotating-file-handler-test")
+               (:file "buffered-handler-test")
+               (:file "condition-logging-test")
                (:file "span-test")
+               (:file "thread-context-test")
                (:file "snapshot-test")
                (:file "coverage-test")
                (:file "property-test")

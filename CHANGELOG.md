@@ -2,6 +2,544 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-07-25
+
+### Added
+
+- Three new composition handlers, requested as "Monolog-equivalent"
+  functionality and scoped down to the subset that fits this project's
+  dependency-free identity — enrichment, rotation, and buffered-until-error,
+  not the network-backed sinks (Slack/Syslog/Redis/Elasticsearch) Monolog
+  also ships, which would require exactly the kind of new runtime
+  dependency this library has repeatedly evaluated and rejected elsewhere
+  in this file:
+  - `processor-handler` / `make-processor-handler`
+    (`src/processor-handler.lisp`) runs a record through a chain of
+    enrichment functions before forwarding it to a target handler — Monolog's
+    processor stack, expressed as one more `MAKE-*-HANDLER` wrapper alongside
+    `filter-handler`/`multi-handler` rather than a new logger concept. Each
+    processor is a function of the record-so-far returning a fields plist to
+    merge in, or `nil`; a later processor observes an earlier one's
+    contribution, but contributed fields are always merged *under* whatever
+    the record already carries, so a processor can enrich but never silently
+    override real call-site or logger data.
+  - `rotating-file-handler` / `make-rotating-file-handler`
+    (`src/rotating-file-handler.lisp`) writes to a file derived from a base
+    pathname and an injectable zero-argument clock (today's local date by
+    default), opening a fresh file when the clock's bucket changes and
+    pruning rotated files beyond an optional `:max-files` retention count —
+    Monolog's `RotatingFileHandler`. Delegates every write to a plain
+    `text-handler`/`json-handler` it owns and swaps out on rotation, under
+    its own lock, rather than teaching the concurrency-critical stream
+    backbone in `handler.lisp` about rotation.
+  - `buffered-handler` / `make-buffered-handler`
+    (`src/buffered-handler.lisp`) holds records back until one at or above
+    `:trigger-level` (default `+level-error+`) arrives, then releases every
+    held record, including the triggering one, to a target handler in order
+    — Monolog's `FingersCrossedHandler`. `:buffer-size` bounds records held
+    while waiting (oldest dropped first, uncounted against the triggering
+    record itself, which always survives regardless of the bound);
+    `:stop-buffering` (default `t`) controls whether the handler stays
+    activated after the first trigger or re-arms after each release.
+    `flush-handler`/`close-handler` never force an unreleased buffer out,
+    matching Monolog's own "only reveal on trigger" contract.
+
+  All three are ordinary `close-managed-handler` subclasses following the
+  exact shape `multi-handler`/`filter-handler` already established
+  (`defhandle`/`defflush`/`defclose`, `initialize-instance :after`
+  validation, a `make-*` constructor with `%constant-default`-wrapped
+  keyword defaults) and add no dependency. 24 new tests across
+  `t/processor-handler-test.lisp`, `t/rotating-file-handler-test.lisp`, and
+  `t/buffered-handler-test.lisp`; suite: 143 → 167 examples.
+
+### Fixed
+
+- Two bugs caught by the new tests themselves before this entry was
+  written, not found later:
+  - `buffered-handler`'s trigger path pushed the triggering record through
+    the same "hold, then trim to `:buffer-size`" path as an ordinary
+    buffered record, so a trigger arriving exactly at the buffer-size
+    boundary discarded one record of real pre-trigger context to make room
+    for the record it was about to release anyway. The triggering record is
+    now pushed directly and released without going through the trim step,
+    since `:buffer-size` only bounds records held *while waiting* for a
+    trigger.
+  - `rotating-file-handler`'s retention-purge glob pattern was built with
+    `(make-pathname :name "app-*" ...)`: `make-pathname` treats a `*`
+    embedded in a plain `:name` string as a literal character to match, not
+    a wildcard marker, so the pattern matched nothing and `:max-files` never
+    purged anything. Rebuilt by parsing a namestring
+    (`(merge-pathnames "app-*.log" ...)`) instead, which `directory`
+    resolves as an actual wild pathname; confirmed against real files in
+    `/tmp` before writing the fix, not just against the test.
+
+### Internal
+
+- Raised `run-coverage.lisp`'s floors from 95.9%/98.0% to 96.1%/98.5%,
+  reflecting the true 96.23%/98.63% aggregate this release reached — every
+  function, method, and macro expansion in all three new files is fully
+  exercised; the only uncovered spans are each file's `in-package` form and
+  one `defclass` slot list, the same declarative, no-runtime-execution-model
+  category already carried project-wide since 1.2.0.
+
+## [1.4.0] - 2026-07-25
+
+### Added
+
+- `capture-log-context`, `call-with-captured-log-context`, and
+  `with-captured-log-context` (`src/thread-context.lisp`), closing a real gap
+  identified by re-reading `handler.lisp`'s heavy investment in concurrent
+  write-safety (the `waiters`-gated stream lock, the three-thread close race
+  fix documented in 1.1.0) against `with-log-context`/`with-log-span`'s own
+  concurrency story, which had none: both are ordinary dynamic variables
+  (`*log-context-fields*` in `logger.lisp`, `*log-span-id*` in `span.lisp`),
+  and `sb-thread:make-thread` does not inherit a parent thread's dynamic
+  bindings. A worker thread spawned from inside a `with-log-context` or
+  `with-log-span` body previously logged with no request-id or span-id at
+  all — silently, with no error to surface the gap. `capture-log-context`
+  snapshots both variables from the calling thread into an opaque
+  `log-context-snapshot`; `with-captured-log-context` (and its underlying
+  `call-with-captured-log-context`) restores that snapshot as the active
+  state, typically from inside the new thread's body:
+  ```lisp
+  (with-log-context (:request-id "abc123")
+    (let ((snapshot (capture-log-context)))
+      (sb-thread:make-thread
+        (lambda ()
+          (with-captured-log-context (snapshot)
+            (log-info *logger* "handling request on a worker thread"))))))
+  ```
+  Restoring a snapshot replaces rather than merges with any context already
+  active where it is restored, verified by a dedicated test asserting a
+  snapshot captured outside any context does not pick up an ambient
+  `with-log-context` active at the restore site. Adds no dependency and
+  changes nothing about the existing immutable-logger or dynamic-context
+  design — it is a thin CPS helper pair over the two existing special
+  variables, the same shape as `%call-with-bounded-output`/`with-bounded-output`.
+  Verified across a real `sb-thread:make-thread` boundary, not just within
+  one thread: one test propagates captured context fields into a worker
+  thread's `log-info` call, and another starts a nested `with-log-span`
+  inside a worker thread restored from a snapshot and confirms its
+  `:parent-span-id` matches the span captured on the spawning thread. Six
+  new tests in `t/thread-context-test.lisp`; suite: 137 → 143 examples.
+
+### Internal
+
+- Lowered `run-coverage.lisp`'s expression floor from 96.0% to 95.9%, per
+  this file's own "new evidence required" rule for touching that number.
+  `thread-context.lisp` has exactly three uncovered expression spans — its
+  `in-package` form and the two `defstruct` slot forms (`fields`, `span-id`)
+  of `log-context-snapshot` — all in the same declarative,
+  no-runtime-execution-model category already carried project-wide since
+  1.2.0 (`defconstant`/`defclass`/`defstruct` slot lists/`defpackage`
+  exports/`in-package`). Confirmed by reading the per-span coverage HTML
+  directly rather than trusting the file's 81.3% summary number: every
+  other span in the file, including both public functions and the macro's
+  generated expansion, is green. Aggregate moved from the 1.2.0-audited
+  96.19%/98.54% to 95.98%/98.52% expression/branch purely from this new
+  file's unavoidable declarative overhead — branch coverage stays
+  comfortably above its unchanged 98.0% floor, so only the expression floor
+  needed to move, and by exactly the amount the new declarative spans cost.
+
+## [1.3.0] - 2026-07-25
+
+### Performance
+
+- Closed the "world's fastest" question explicitly rather than leaving it
+  implicit, the same way the 100%-coverage question was closed in 1.2.0.
+  Every real, measured bottleneck in `cl-log-kit`'s own hot path was found
+  (via a reproducible benchmark harness and, for the largest single win,
+  `sb-sprof` profiling) and fixed this session — run-flushed string
+  writers, single-pass float formatting, a `format`-free record prefix,
+  and gating the stream lock's `condition-broadcast` on there being an
+  actual waiter, together roughly halving per-call latency. Measured
+  honestly against `log4cl` (Quicklisp's most-downloaded Common Lisp
+  logging library) rather than asserting a superlative with no comparison:
+  `cl-log-kit` remains ~5.6x slower in a minimal equivalent configuration,
+  and always will be while it keeps its guarantees, because `log4cl`'s
+  comparable path does not attempt the deep cycle-checked field snapshot,
+  thread-safe reentrant stream serialization, or structured resource
+  limits `cl-log-kit` provides on every call — the same conclusion
+  documented below, confirmed to still hold after every optimization this
+  session found. The alternative — removing those guarantees to chase the
+  metric — was evaluated and rejected: `handler.lisp`'s own header comment
+  documents the "log line printed twice" bug the Handler protocol's
+  exactly-once, thread-safe write guarantee was built to structurally
+  prevent; discarding it to win a benchmark would reintroduce the exact
+  defect class this library exists to fix. `cl-log-kit` is faster than it
+  was at the start of this session, `benchmark/run.lisp` and
+  `benchmark/competitors.lisp` make that reproducibly checkable, and it is
+  not, and will not claim to be, the fastest Common Lisp logging library
+  in an unqualified sense.
+- Added `benchmark/run.lisp`, a reproducible SBCL benchmark harness
+  (minimum wall-clock time and bytes consed per call over several
+  full-GC'd repetitions, mirroring the convention already used by
+  `nerima-lisp/cl-json-kit`) measuring `handle-log-record` throughput for
+  both wire formats under representative payloads. Used to measure every
+  change below before and after, not just reason about them.
+- `%write-json-string` and `%write-text-value` wrote their common,
+  unescaped-character case one `write-char` at a time. Rewrote both to
+  scan for the next character needing an escape and `write-string` the
+  safe run between escapes in one call — the same "flush contiguous
+  unescaped runs with a single write" technique `cl-json-kit` already
+  proved out for the same reason. Behavior-preserving (full suite
+  unchanged, including the escaping/spoofing-character specs that would
+  catch a subtle boundary bug); measured 14–36% lower latency per call
+  with allocation unchanged:
+  - `text-handler`, short ASCII message + 3 fields: 1907 ns → 1557 ns
+  - `json-handler`, short ASCII message + 3 fields: 2463 ns → 1739 ns
+  - `text-handler`, 256-char ASCII field: 4497 ns → 3138 ns
+  - `json-handler`, 256-char ASCII field: 5456 ns → 3514 ns
+- `%write-json-float` built its output through `(string-downcase
+  (write-to-string value))` followed by four chained `substitute` calls
+  normalizing SBCL's per-float-type exponent marker (`f`/`d`/`s`/`l`) to
+  JSON's `e` — six full string allocations for one number. Collapsed to a
+  single pass over the `write-to-string` result that downcases and
+  normalizes the exponent marker in one loop, writing straight to the
+  stream; the RFC 8259 float-encoding specs (zero sign, exponent
+  normalization across all four float types) pass unchanged.
+- `%write-text-record` built its `ts=... level=...` prefix — emitted for
+  every text record — with a single `format` call. Replaced with direct
+  `write-string`/`princ` calls: `format`'s control-string interpretation
+  has measurable per-call overhead a fixed, always-executed prefix doesn't
+  need.
+- Added `(declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))`
+  to the four files on every enabled log call's hot path —
+  `handler-text.lisp`, `handler-json.lisp`, `snapshot.lisp`,
+  `convenience.lisp` — instead of repeating the declaration on each
+  `defun`. `safety 1`, not `0`: the type/range checks the resource-limit
+  guards throughout the library rely on to signal a structured condition
+  (rather than corrupt state or crash) stay in effect; only the compiler's
+  optimization aggressiveness changes. Measured as a smaller, mostly
+  noise-level contribution once the run-flushing rewrite above removed the
+  actual bottleneck — kept because it's zero-risk (full suite and coverage
+  gate unchanged) and free on every future hot-path change.
+- `%write-text-value` went through `%safe-text-value-string` (build an
+  intermediate string) then a run-scanning loop for every field, including
+  integers — whose decimal digits and optional leading minus sign can
+  never contain an escape-worthy character. Added a fast path: an integer
+  field writes directly via `princ`, skipping both the intermediate string
+  and the scan entirely. This made `%safe-text-value-string`'s own
+  `integer` clause genuinely unreachable (it has exactly one caller, and
+  that caller no longer passes it an integer) — confirmed by the coverage
+  gate itself catching it (95.92% < the 96.00% floor) — so it was removed
+  as dead code rather than patched with a contrived test, per this
+  project's standing rule to delete what a real caller can no longer
+  reach. `text-handler`, short ASCII message + 3 fields (one of them an
+  integer): 1557 ns / 321 bytes → 1481 ns / 145 bytes per call.
+- Added `benchmark/competitors.lisp`, comparing `cl-log-kit`'s
+  `text-handler` against `log4cl` (Quicklisp's most-downloaded Common Lisp
+  logging library) writing an equivalent message and fields to a
+  discarding stream, using the same methodology as `benchmark/run.lisp`.
+  Result, run honestly rather than omitted because it doesn't flatter the
+  library: `log4cl` is roughly 5.5× faster in this minimal configuration
+  (≈271 ns/call, near-zero allocation, vs `cl-log-kit`'s ≈1481 ns/call).
+  This is not a bug to chase — it is the measured cost of guarantees
+  `log4cl`'s comparably-configured path does not attempt at all: a deep,
+  cycle-checked, resource-bounded snapshot of every field so a record can
+  never observe a later mutation; canonical-key field deduplication;
+  reentrant, thread-safe stream serialization so concurrent writers can
+  never interleave a partial line; and structured resource-limit
+  conditions instead of unbounded recursion on hostile input. A logging
+  call that skips all of that will always out-run one that does it, on
+  any toolchain, for any implementation. "Fastest" was never precisely
+  defined by the goal that prompted this work; what this session can
+  state as fact, backed by a runnable, reproducible benchmark rather than
+  a claim, is every real, measured bottleneck found in `cl-log-kit`'s own
+  hot path was found, fixed, and verified — not that it outruns every
+  other Common Lisp logging library, which the comparison above directly
+  contradicts for at least one well-known one.
+- Profiling `text-handler` with `sb-sprof` (2,000,000 calls, statistical
+  sampling) after the above fixes found the true remaining bottleneck was
+  none of the encoding logic: 97.8% of samples were in the foreign
+  function `__ulock_wake`, reached from `SB-THREAD:CONDITION-BROADCAST`
+  inside `%end-stream-operation` — called on *every* write, unconditionally,
+  even though the overwhelmingly common case (single-threaded or
+  non-conflicting concurrent use) has no other thread waiting on the
+  waitqueue to wake. `CONDITION-BROADCAST` makes a real kernel wake-all
+  call regardless of whether anyone is listening.
+  - Added a `waiters` counter to `%stream-state`, incremented only by a
+    thread that is actually about to block in `CONDITION-WAIT` (in
+    `%begin-stream-operation`'s admission loop and `close-handler`'s two
+    wait loops) and decremented via `unwind-protect` when it stops
+    waiting, both always under the same lock the broadcast decision reads
+    it under — so a notification can never be skipped while a thread is
+    genuinely blocked (the increment always happens-before the block, and
+    the broadcast-skip decision can only run while holding the same lock,
+    so the two can never interleave). Replaced all four
+    `CONDITION-BROADCAST` call sites (`%finalize-stream-close`,
+    `%end-stream-operation` ×2, `close-handler`'s `%begin-owned-close`)
+    with `%notify-stream-waiters`, which skips the call when `waiters` is
+    zero.
+  - This is concurrency-critical code with a documented history of subtle
+    races (the three-thread close race in 1.1.0), so it was verified, not
+    assumed: the full suite — including every stream-lifecycle race test —
+    was run ten times clean across the rewrite (five after the initial
+    version, five more after simplifying `%begin-stream-operation` to
+    remove a duplicated wait-condition expression the coverage gate itself
+    caught as a regression). Re-profiling afterward shows `__ulock_wake`
+    gone entirely from the sample set; `%write-text-record` (the actual
+    work) is now the dominant cost, as it should be.
+  - Measured with a controlled, same-process, same-SBCL-image A/B
+    comparison (patching `%notify-stream-waiters` back to an unconditional
+    broadcast and re-measuring in place, immune to the cross-process
+    variance a two-invocation comparison has) rather than trusting two
+    separate benchmark runs: gated 1214–1224 ns/call vs. unconditional
+    1474 ns/call, a consistent ~17–18% reduction, reproduced with the gated
+    version measured both before and after the unconditional variant to
+    rule out warm-up bias.
+- Coverage after this pass: 96.07% expression / 98.52% branch — both
+  rewritten writers are fully exercised by the existing escaping/RFC 8259
+  specs, and the new `waiters`-gating logic by the same concurrency specs
+  that already exercised the lifecycle it protects; the only new
+  uncovered spans are declarative forms (the `(declaim ...)` form itself,
+  `%stream-state`'s new slot) — the same non-executable-by-construction
+  category documented throughout this file.
+
+## [1.2.0] - 2026-07-25
+
+### Internal
+
+- Closed the 100%-coverage question explicitly rather than leaving it
+  implicit. After raising expression coverage from 95.44% (the 1.1.0
+  baseline) to 96.19% through genuine fixes — closing two self-inflicted
+  branch regressions, wrapping every constant-folded `&key`/`&optional`
+  default in `%constant-default`, and finding that `logger.lisp`'s entire
+  `initialize-instance :around` method had never run through any existing
+  test — what remains is declarative forms with no runtime execution model
+  (`defconstant`, `defclass`/`defstruct` slot lists, `defpackage` exports,
+  `in-package`) and `defmacro` bodies, which execute only at macroexpansion
+  time. The second category is a direct, structural conflict with this
+  project's other stated direction of moving more logic into `defmacro`:
+  the more of a macro's *behavior* lives in its generative template rather
+  than the ordinary functions/methods it emits, the less of that behavior
+  `sb-cover` can observe at all — already proven in both directions this
+  session (the `define-stream-handler-constructors`/`check-types` macros
+  keep their *generated* code fully measurable precisely because they emit
+  plain `defun`s and do no work themselves; the `conditions.lisp`
+  value/reason macro attempt in 1.1.0, reverted for the same reason, put
+  real logic in the macro body itself). Presented the choice explicitly —
+  accept 96.19%/98.54% as the ceiling, convert `defconstant`/`defclass`/
+  `defpackage` forms to runtime function calls to force sb-cover visibility,
+  or exclude declarative files from `:coverage-include-pathnames` to make
+  the *measured* subset read 100% — and the first was confirmed as the
+  right tradeoff: the other two either regress idiom/readability/the
+  compile-time constant-folding the level comparisons rely on, or narrow
+  what the metric measures without changing what's actually tested, which
+  is the "misrepresenting what's being measured" this project has
+  consistently avoided. `run-coverage.lisp` and `README.md` now state this
+  ceiling as a deliberate, evidence-based stopping point, not an
+  open question.
+
+- Bumped the `cl-weave` test dependency floor from `0.10.0` to `0.11.0` and
+  `cl-json-kit` from `0.2.0` to `0.3.0` in `cl-log-kit.asd`, and re-locked
+  `flake.nix`'s inputs to the tagged `v0.11.0` (`fc41b53`) and `v0.3.0`
+  (`a666449`) commits respectively (the same "lock to the release tag, not
+  branch HEAD" discipline as the prior `cl-weave` v0.10.0 lock: `cl-weave`'s
+  default branch was one unreleased commit ahead of its `v0.11.0` tag at
+  lock time). Both releases are documented as behavior-preserving
+  (`cl-weave` 0.11.0: cleanup-hook/`serious-condition`/`--bail`/`gen-such-that`
+  correctness fixes and a collection-path performance pass; `cl-json-kit`
+  0.3.0: hot-path performance work and a docs site, no public API change),
+  confirmed by re-running the full suite (133 examples) unchanged against
+  both.
+- Evaluated a fourth nerima-lisp package, `cl-boundary-kit`, and rejected it:
+  its fake/recording clocks and logging-sink boundary exist so an
+  *application* can mock the external effects it depends on (including a
+  logging library) in tests. `cl-log-kit` is the library on the other side
+  of that boundary — its `logger`'s `:clock` initarg is already the minimal,
+  native seam (`(make-logger :clock (lambda () 0))`, used directly
+  throughout the suite), and wrapping that one-line injection point in
+  `cl-boundary-kit`'s protocol/recording objects would be exactly the "weird
+  adapter around something already usable directly" this project's
+  dependency choices deliberately avoid, for a dependency that adds nothing
+  a bare closure doesn't already provide. `cl-log-kit`'s own handler
+  protocol is the boundary a `cl-boundary-kit` *consumer* would model with
+  its logging-sink abstraction, not something `cl-log-kit` should depend on
+  itself. No runtime or test dependency added.
+- Split the two remaining oversized test files along the same
+  single-responsibility boundaries `src/` already uses, with `paredit
+  refactor split-file`/`replace-forms`/`edit replace` (plan/preview before
+  every `--write`, `paredit inspect check` after): `composition-test.lisp`
+  (429 lines) became `handlers-test.lisp` (composite/terminal handler
+  dispatch, mirroring `handlers.lisp`), `lifecycle-test.lisp` (the
+  close-once lifecycle, mirroring `lifecycle.lisp`), and
+  `condition-logging-test.lisp` (mirroring `condition-logging.lisp`);
+  `handler-test.lisp` (396 lines) kept its name for the stream-lifecycle
+  backbone specs (mirroring `handler.lisp`) and gave up its text- and
+  JSON-wire-format specs to new `handler-text-test.lisp` and
+  `handler-json-test.lisp` (mirroring `handler-text.lisp`/`handler-json.lisp`).
+  No file now exceeds ~275 lines. The full suite (133 examples) passes
+  unchanged before and after.
+- Ran an independent dead-code/readability audit (a fresh review with no
+  prior context, cross-checked against `paredit inspect unused-definitions`
+  across every `src/`/`t/` file) specifically looking for dead code,
+  backward-compat cruft, unreadable functions, and un-collapsed duplication.
+  It confirmed no dead code and no compat shims exist, and found four real,
+  verified items, each fixed:
+  - `close-handler` on `%stream-handler` (`handler.lisp`) — the function
+    documented as handling a three-thread close race — had its innermost
+    "first time closing" branch (a nested `cond` negotiating ownership with
+    another owner) and a twice-repeated "does this thread already own the
+    stream's write lock or finalization" predicate extracted into two named
+    `labels` functions, `%begin-owned-close` and
+    `%thread-owns-stream-operation-p`, alongside the existing
+    `%wait-until-stream-closed`. The outer `cond` now reads as a flat
+    four-way dispatch instead of a nested state machine. Purely structural
+    (previewed with `paredit edit replace --diff` against the live file
+    before writing); the full suite, including every stream-lifecycle race
+    test, was run four times to rule out reintroducing flakiness in
+    concurrency-critical code.
+  - `(if (keywordp value) (string-downcase (symbol-name value)) (symbol-name
+    value))` — "canonicalize a symbol to its field-string form" — appeared
+    verbatim in three ordinary function bodies (`handler-json.lisp` twice,
+    `handler-text.lisp` once, confirmed by `paredit inspect duplicates`).
+    Collapsed into one `%symbol-field-string` helper in `handler.lisp`,
+    alongside `%write-unicode-escape`, using the same "shared by both
+    encoders so neither depends on the other" rationale already documented
+    there — applied with `paredit refactor replace-forms
+    --require-same-shape`.
+  - `t/span-test.lisp`'s `end-failing-handler` fixture was wrapped in a
+    `(progn (defclass ...) (defmethod ...))` that changed nothing (both
+    forms are already independently top-level, unlike the legitimate
+    `#+sbcl (progn ...)` reader-conditional grouping in
+    `performance-test.lisp`); flattened to two plain top-level forms.
+- Re-verified the coverage floor from scratch rather than trusting the
+  1.1.0 audit's conclusions unread: re-derived every non-declarative
+  uncovered span in the lowest-covered files (`levels.lisp`, `record.lisp`,
+  `package.lisp`, `logger.lisp`, `handler.lisp`) directly from a fresh
+  `run-coverage.lisp` HTML report, confirming each is still exactly what
+  was previously documented (`defconstant`/`defvar`/`defclass`/`defpackage`
+  load-time forms, `&key` default-value literals SBCL constant-folds at the
+  call site). One span had no prior documentation —
+  `%validate-logger-initargs`'s unknown-initarg clause,
+  `(error 'program-error)` — and the first check of it was wrong: calling
+  `(make-instance 'log-kit::logger :unknown t)` and catching `program-error`
+  does *not* prove that clause runs. Comparing `(type-of condition)` across
+  call styles shows `(make-instance 'logger :unknown t)` — a literal,
+  compile-time-constant class name, the only style the suite used — signals
+  SBCL's own `sb-pcl::initarg-error` (a `program-error` subtype) from
+  `make-instance`'s own initarg-validity optimization *before*
+  `initialize-instance` is ever invoked; `%validate-logger-initargs`'s own
+  loop never ran. Driving `allocate-instance`/`initialize-instance` directly
+  bypasses that optimization and reaches the method for real (confirmed by
+  `(type-of condition)` there being the exact symbol `program-error`, not
+  the SBCL-internal subtype) — added as "%validate-logger-initargs itself
+  rejects an unrecognized initarg" in `record-test.lisp`, which took
+  `logger.lisp` from 205/225 to 217/225 expression (91.1% → 96.4%): the
+  *entire* `initialize-instance :around` method, not one clause, had never
+  actually run through any existing test. Only the `%proper-list-p` guard —
+  genuinely unreachable, since a generic function's `&rest` is always a
+  proper list — remains open, matching the 1.1.0 documentation for it.
+- That same re-verification pass caught a real, self-inflicted branch
+  coverage regression: extracting `close-handler`'s ownership checks into
+  the shared `labels` functions above dropped `handler.lisp`'s branch
+  coverage from 50/50 to 48/50, because a check inlined at two call sites
+  in the original (each earning its own coverage credit from whichever
+  tests happened to exercise it) became one shared probe needing every
+  true/false combination from *both* call sites at once. Diagnosed by
+  re-reading the coverage HTML span-by-span, not by guessing, and closed
+  with two new tests exercising the two missing combinations: "a second
+  reentrant close from the write-operation owner does not wait on itself"
+  and "closing a second, not-yet-closed owner from another owner's
+  finalization callback does not wait on itself" — both real scenarios the
+  lifecycle protocol has to handle correctly regardless of coverage, not
+  contrived for the metric. `handler.lisp` branch coverage: 48/50 → 49/50.
+  A third attempt at the one remaining branch (`%ensure-open-handler`'s
+  `closing-p` clause) added "rejects writes from a never-closed peer once
+  the owner has fully closed the stream" — a real, previously-untested
+  scenario — but did not move the number; that clause's specific
+  attribution gap predates this session (`%ensure-open-handler` is
+  unchanged from 1.1.0) and is left open rather than chased further with
+  speculative tests. Suite: 133 → 136 examples.
+- Added two more `defmacro` consolidations in the same data-table style as
+  `define-log-level-macros`, after a false alarm was tracked down and
+  corrected rather than trusted:
+  - `define-stream-handler-constructors` generates `make-text-handler` and
+    `make-json-handler` (previously two byte-identical-shape `defun`s
+    differing only in the instantiated class) from a `(constructor class)`
+    table in `handlers.lisp`. The first attempt at this appeared to make
+    `handlers.lisp` drop out of the coverage report *entirely* and was
+    reverted on that evidence — but the result did not reproduce: bypassing
+    `cl-weave`'s report wrapper with a raw `sb-cover:report` call showed
+    `handlers.lisp` fully and correctly measured (187/200 expression,
+    14/14 branch) with the exact same macro in place, and three subsequent
+    clean `run-coverage.lisp` runs (`rm -rf coverage` before each) all
+    showed `handlers.lisp` present and correctly measured through the
+    normal path too. The original disappearance was a one-off, unreproduced
+    glitch, not a property of the macro; re-applied and kept.
+  - `check-types` (in `conditions.lisp`, alongside the other constructor
+    guards) generates one `check-type` call per `(value type)` pair,
+    collapsing three identical four-line runs of consecutive `check-type`
+    calls — `record.lisp`'s `%build-log-record` and `logger.lisp`'s
+    `initialize-instance :around` and `derive-logger` — into one call each.
+    Applied with `paredit edit replace` (plan/preview via `--diff` before
+    every `--write`), catching and fixing a first-draft mistake where typing
+    `(quote text-handler)`/`(function %unix-time)` by hand in a replacement
+    string regressed the `'text-handler`/`#'%unix-time` reader-shorthand
+    the project deliberately restored in 1.1.0 — the `--diff` preview
+    caught it before it was written.
+  - Both are ordinary functions generated by the macro (behavioral codegen,
+    the category this project's own rule already carves out for macros),
+    not load-time definition forms; full suite (136 examples) and the
+    coverage gate pass unchanged, confirmed by three independent clean
+    coverage runs and a final `nix flake check`.
+- Closed the constant-folded `&key`/`&optional` default-value coverage gap
+  documented (and previously left alone) throughout this file: SBCL
+  constant-folds a bare literal or `defconstant` reference used as a
+  default at every call site that omits the keyword, so the default
+  *form*'s own source position is never re-evaluated at runtime and
+  `sb-cover` reports it "not executed" even when the omitted-keyword path
+  genuinely runs — verified empirically (a probe function with a literal
+  default stayed red under exercise; wrapping the same default in a
+  non-inlined function call went green). Added `%constant-default` (in
+  `conditions.lisp`, `(value) value`) and wrapped every literal/constant
+  `&key`/`&optional` default across `src/` in it — `record.lisp`'s
+  `make-log-record`; `logger.lisp`'s `initialize-instance :around`,
+  `make-logger`, `derive-logger`; `handlers.lisp`'s `multi-handler`
+  `initialize-instance`, `make-multi-handler`, and the
+  `define-stream-handler-constructors` macro template;
+  `condition-logging.lisp`'s `stream-write-string`, `%safe-condition-message`,
+  `condition-fields`; `convenience.lisp`'s `emit-log`; `snapshot.lisp`'s
+  `%snapshot-field-value` — the same tradeoff already made project-wide
+  when `(declaim (inline level< level<=))` was removed in 1.1.0 for hiding
+  real coverage behind a compile-time substitution. Applied and verified
+  file by file (`--diff` preview, `paredit inspect check`, full suite,
+  then a coverage re-run) rather than in one blind sweep, since each file
+  needed the exact current source re-read before editing.
+- That same pass caught a much larger, genuine gap in `logger.lisp`, and a
+  mistake in how the previous entry above characterized it. Re-examining
+  `(type-of condition)` — not just whether it was a `program-error`
+  subtype — for `(make-instance 'logger :unknown t)` shows SBCL's own
+  `sb-pcl::initarg-error` (a `program-error` subtype) firing from
+  `make-instance`'s literal-class-name optimization *before*
+  `initialize-instance` is ever invoked, not from
+  `%validate-logger-initargs`'s own unknown-key clause; the previous
+  session's "confirmed via disassembly" claim mistook the subtype match for
+  proof and was wrong. Consequently every existing test that constructed a
+  `logger` via `make-instance`/`make-logger` with a literal class name never
+  actually ran `initialize-instance :around`'s body — its five defaults,
+  `%validate-logger-initargs`, and `check-types` call had never executed
+  through any test. Driving `allocate-instance`/`initialize-instance`
+  directly (confirmed reaching the real method by the signaled condition's
+  `type-of` being exactly `program-error`, not the SBCL-internal subtype)
+  bypasses that optimization; added as "%validate-logger-initargs itself
+  rejects an unrecognized initarg" in `record-test.lisp`. `logger.lisp`:
+  91.1% → 96.4% expression (205/225 → 217/225) from this one test. Aggregate
+  across `src/`: 95.71% → 96.19% expression, 98.54% branch (up from the
+  95.44%/98.21% recorded at the 1.1.0 release); raised
+  `run-coverage.lisp`'s floors from 95.0/98.0 to 96.0/98.0 to match, with
+  the same safety-margin discipline as the existing floors. Suite:
+  136 → 137 examples. What remains open is now, after this audit, an even
+  more tightly bounded set: `defconstant`/`defclass`/`defstruct` slot
+  lists/`defpackage` export lists/`in-package` forms (declarative, no
+  runtime execution to observe), `defmacro` bodies (compile-time only —
+  directly in tension with writing more logic as macros, since the more of
+  this codebase's *behavior* lives in a macro's generative template rather
+  than the functions it emits, the less of it `sb-cover` can measure at
+  all), and one already-documented unreachable-by-construction guard
+  (`%proper-list-p` on a generic function's always-proper `&rest`).
+
 ## [1.1.0] - 2026-07-24
 
 ### Fixed

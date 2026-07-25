@@ -32,14 +32,12 @@
         unless (member key '(:name :handler :level :fields :clock) :test #'eq)
           do (error 'program-error)))
 
-(defmethod initialize-instance :around ((instance logger) &rest initargs &key (name "root")
-                                        (handler (make-instance 'text-handler))
-                                        (level +level-info+) (fields nil) (clock #'%unix-time))
+(defmethod initialize-instance :around ((instance logger) &rest initargs &key (name (%constant-default "root"))
+                                        (handler (%constant-default (make-instance 'text-handler)))
+                                        (level (%constant-default +level-info+)) (fields (%constant-default nil))
+                                        (clock (%constant-default #'%unix-time)))
   (%validate-logger-initargs initargs)
-  (check-type name string)
-  (check-type handler handler)
-  (check-type level integer)
-  (check-type clock function)
+  (check-types (name string) (handler handler) (level integer) (clock function))
   (%check-field-string-length name)
   (call-next-method instance :name (copy-seq name) :handler handler :level level
                     :fields (if *logger-fields-are-snapshot* fields (plist-to-alist fields))
@@ -51,8 +49,9 @@
 (defun logger-fields (logger)
   (%copy-field-alist (%logger-fields logger)))
 
-(defun make-logger (&key (name "root") (handler (make-instance 'text-handler)) (level +level-info+)
-                    (fields nil) (clock #'%unix-time))
+(defun make-logger (&key (name (%constant-default "root")) (handler (%constant-default (make-instance 'text-handler)))
+                    (level (%constant-default +level-info+)) (fields (%constant-default nil))
+                    (clock (%constant-default #'%unix-time)))
   (make-instance 'logger :name name :handler handler :level level :fields fields :clock clock))
 
 (defun %make-logger-from-snapshot (name handler level fields clock)
@@ -79,8 +78,9 @@ did not already claim."
                               (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
                               (logger-clock logger)))
 
-(defun derive-logger (logger &key (name nil name-p) (handler nil handler-p) (level nil level-p)
-                      (fields nil fields-p) (clock nil clock-p))
+(defun derive-logger (logger &key (name (%constant-default nil) name-p) (handler (%constant-default nil) handler-p)
+                      (level (%constant-default nil) level-p) (fields (%constant-default nil) fields-p)
+                      (clock (%constant-default nil) clock-p))
   (check-type logger logger)
   (let ((derived-name (if name-p name (%logger-name logger)))
         (derived-handler (if handler-p handler (logger-handler logger)))
@@ -89,10 +89,8 @@ did not already claim."
         (derived-fields (if fields-p
                             (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
                             (%logger-fields logger))))
-    (check-type derived-name string)
-    (check-type derived-handler handler)
-    (check-type derived-level integer)
-    (check-type derived-clock function)
+    (check-types (derived-name string) (derived-handler handler) (derived-level integer)
+                 (derived-clock function))
     (%check-field-string-length derived-name)
     (%make-logger-from-snapshot derived-name derived-handler derived-level derived-fields
                                 derived-clock)))

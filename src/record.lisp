@@ -17,10 +17,7 @@
   (logger-name "root" :type string :read-only t))
 
 (defun %build-log-record (level message timestamp fields logger-name)
-  (check-type level integer)
-  (check-type message string)
-  (check-type timestamp integer)
-  (check-type logger-name string)
+  (check-types (level integer) (message string) (timestamp integer) (logger-name string))
   (%check-field-string-length message)
   (%check-field-string-length logger-name)
   (%make-log-record-from-snapshot :level level
@@ -29,8 +26,9 @@
                                   :fields fields
                                   :logger-name (copy-seq logger-name)))
 
-(defun make-log-record (&key (level +level-info+) (message "") (timestamp 0) (fields nil)
-                        (logger-name "root"))
+(defun make-log-record (&key (level (%constant-default +level-info+)) (message (%constant-default ""))
+                        (timestamp (%constant-default 0)) (fields (%constant-default nil))
+                        (logger-name (%constant-default "root")))
   (%build-log-record level message timestamp (plist-to-alist fields) logger-name))
 
 (defun log-record-level (record)
