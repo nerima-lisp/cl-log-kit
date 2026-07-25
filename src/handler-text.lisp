@@ -56,43 +56,56 @@ rendered log line look different from what it actually contains."
   ;; %SAFE-TEXT-VALUE-STRING's intermediate string and the run-scanning
   ;; loop below entirely — the common case for numeric fields.
   (if (integerp value)
-      (princ value stream)
-      (let* ((text (%safe-text-value-string value))
+      (%write-integer value stream)
+      (let* ((raw (%safe-text-value-string value))
+             ;; Guaranteed-simple copy (a no-op for the already-simple string
+             ;; %SAFE-TEXT-VALUE-STRING returns) so SCHAR and the run-flushing
+             ;; WRITE-STRING take the fast simple-array path instead of the
+             ;; generic hairy-array element reader.
+             (text (if (simple-string-p raw) raw (coerce raw 'simple-string)))
              (length (length text))
              (run-start 0))
-        (declare (type fixnum length run-start))
+        (declare (type simple-string text) (type fixnum length run-start))
         (flet ((flush-run (end)
                  (declare (type fixnum end))
                  (when (< run-start end)
                    (write-string text stream :start run-start :end end))))
           (dotimes (index length)
             (declare (type fixnum index))
-            (let* ((character (char text index))
-                   (code (char-code character))
-                   (escape (case character
-                             (#\\ "\\\\")
-                             (#\" "\\\"")
-                             (#\Newline "\\n")
-                             (#\Return "\\r")
-                             (#\Tab "\\t")
-                             (otherwise nil))))
+            (let ((character (schar text index)))
+              ;; Fast path: a printable ASCII character (code 32..126) needs
+              ;; escaping only if it is a quote or backslash. Everything else
+              ;; in that range — every letter, digit, space, and ordinary
+              ;; punctuation, i.e. the overwhelming majority of log text —
+              ;; stays part of the current run with a single range test and
+              ;; two character comparisons, never touching CHAR-CODE or the
+              ;; five-range spoof-character scan. Only the rare non-printable
+              ;; or non-ASCII character pays for the full classification.
               (cond
-                (escape
-                 (flush-run index)
-                 (write-string escape stream)
-                 (setf run-start (1+ index)))
-                ((or (< code 32) (= code 127) (= code #x2028) (= code #x2029)
-                     (<= #xD800 code #xDFFF) (%text-spoof-character-p code))
-                 (flush-run index)
-                 (%write-unicode-escape code stream)
-                 (setf run-start (1+ index))))))
+                ((char<= #\Space character #\~)
+                 (case character
+                   (#\" (flush-run index) (write-string "\\\"" stream) (setf run-start (1+ index)))
+                   (#\\ (flush-run index) (write-string "\\\\" stream) (setf run-start (1+ index)))))
+                (t
+                 (let ((code (char-code character)))
+                   (declare (type fixnum code))
+                   (cond
+                     ((char= character #\Newline)
+                      (flush-run index) (write-string "\\n" stream) (setf run-start (1+ index)))
+                     ((char= character #\Return)
+                      (flush-run index) (write-string "\\r" stream) (setf run-start (1+ index)))
+                     ((char= character #\Tab)
+                      (flush-run index) (write-string "\\t" stream) (setf run-start (1+ index)))
+                     ((or (< code 32) (= code 127) (= code #x2028) (= code #x2029)
+                          (<= #xD800 code #xDFFF) (%text-spoof-character-p code))
+                      (flush-run index) (%write-unicode-escape code stream) (setf run-start (1+ index)))))))))
           (flush-run length)))))
 
 (defun %write-text-record (record output)
   ;; A direct WRITE-STRING/PRINC sequence avoids FORMAT's control-string
   ;; interpretation overhead on this always-executed prefix of every record.
   (write-string "ts=" output)
-  (princ (log-record-timestamp record) output)
+  (%write-integer (log-record-timestamp record) output)
   (write-string " level=" output)
   (write-string (level-name (log-record-level record)) output)
   (write-string " logger=\"" output)
@@ -110,4 +123,9 @@ rendered log line look different from what it actually contains."
 
 (defmethod handle-log-record ((handler text-handler) record)
   (check-type record log-record)
-  (%write-handler-record handler (lambda (stream) (%write-text-record record stream))))
+  ;; %WRITE-HANDLER-RECORD calls WRITER synchronously and never retains it, so
+  ;; the closure — which only captures RECORD — has dynamic extent and SBCL
+  ;; stack-allocates it, removing a per-call heap allocation from the hot path.
+  (flet ((writer (stream) (%write-text-record record stream)))
+    (declare (dynamic-extent #'writer))
+    (%write-handler-record handler #'writer)))

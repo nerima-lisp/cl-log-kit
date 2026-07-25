@@ -2,6 +2,97 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-07-25
+
+### Performance
+
+- Drove `handle-log-record`'s hot path to **zero per-call allocation** on
+  every benchmarked wire format and payload, and cut per-call latency a
+  further 1.9–4.8x on top of the 1.3.0 pass — without weakening a single
+  guarantee (full 167-test suite and the `nix` check unchanged, including
+  the escaping, anti-spoofing, cycle-checked-snapshot, resource-limit, and
+  reentrant-stream-serialization specs). Measured before/after with
+  `benchmark/run.lisp` and profiled with `sb-sprof`:
+  - `text-handler`, short ASCII message + 3 fields: 1217 ns / 145 B → **373 ns / 0 B**
+  - `json-handler`, short ASCII message + 3 fields: 1438 ns / 240 B → **630 ns / 0 B**
+  - `text-handler`, 256-char ASCII field: 2711 ns / 80 B → **560 ns / 0 B**
+  - `json-handler`, 256-char ASCII field: 3274 ns / 113 B → **1197 ns / 0 B**
+  - `json-handler`, double-float-heavy fields: 2104 ns / 1140 B → **1120 ns / 0 B**
+
+  This revises — with evidence — the 1.3.0 conclusion that `cl-log-kit`
+  "remains ~5.6x slower [than `log4cl`] and always will be while it keeps
+  its guarantees." The measured gap in the same minimal `text-handler`
+  configuration is now ~1.4x (`cl-log-kit` ≈373 ns/call vs `log4cl` ≈271
+  ns/call), closed by ordinary engineering rather than by dropping
+  guarantees. The residual gap is the genuine cost of work `log4cl`'s
+  comparable path does not do at all: `cl-log-kit` escapes and
+  anti-spoofs every emitted token and writes a structured, per-field
+  record; `log4cl` writes one already-formatted message string.
+
+- **Zero-allocation float encoding.** `%finite-float-p` probed finiteness
+  with `(- value value)`, boxing a fresh double on every float field
+  (twice — once to validate, once to write), and `%write-json-float` still
+  routed through the printer. Finiteness now decodes the raw exponent/
+  mantissa bits via `float-infinity-p`/`float-nan-p` (never boxes, never
+  traps — the same technique the text encoder already used), and the
+  number is written by binding `*read-default-float-format*` to the value's
+  own float type so SBCL's printer emits strict RFC 8259 directly (bare
+  `e` exponent or none, no `d0`/`f0` marker) straight to the stream with no
+  intermediate string. The float-heavy record dropped from 1140 B to 0 B
+  per call. RFC 8259 float specs (zero sign, exponent normalization across
+  all four float types, `1.0d200` → `…e200`) pass unchanged.
+
+- **Interned keyword field-key names.** Rendering a keyword key or value
+  `string-downcase`'d its symbol name — a fresh string on every call, and
+  real workloads reuse a small fixed set of keys across millions of
+  records. Each keyword's downcased name is now interned once in a
+  copy-on-write cache (`%cached-keyword-name`): the published table is
+  immutable and a miss atomically swaps in a rebuilt replacement, so the
+  steady-state hit path is a single lock-free `gethash` with no data race
+  against a concurrent grow. This is what removes the last per-call bytes
+  from both text (3 keys) and JSON (keys, twice) records.
+
+- **Stack-allocated writer closures.** `handle-log-record` allocated a
+  fresh `(lambda (stream) …)` capturing the record on every call.
+  `%write-handler-record` invokes it synchronously and never retains it, so
+  it is now a `dynamic-extent` local function SBCL stack-allocates.
+
+- **`simple-string`/`schar` fast path.** Post-snapshot strings are always
+  simple (`copy-seq` makes them so), but the encoders indexed them as
+  generic `string`s, forcing every character read through the hairy-array
+  element reader (profiled at ~16% of the JSON path). Both encoders and
+  `%validate-json-string` now dispatch once on simple-ness and index with
+  `schar`; the run-flushing `write-string` takes the simple-array path too.
+
+- **`base-string` surrogate-validation skip.** A `base-string` holds only
+  base-chars (code < 128), which can never be a Unicode surrogate, so
+  `%validate-json-string`'s scan collapses to a single widetag test for the
+  common ASCII case instead of a full character pass.
+
+- **Restructured escape scan.** The per-character classifier ran a
+  five-range `%text-spoof-character-p` (and several equality tests) on
+  *every* character, dominating the text path at ~40%. It now takes a
+  printable-ASCII fast path — one range test plus the two quote/backslash
+  comparisons — and only a genuinely non-printable or non-ASCII character
+  pays for the full control/separator/surrogate/spoof classification.
+  Behavior is identical (all escaping and one-physical-line specs
+  unchanged). This alone took the text path from 1152 ns to 468 ns.
+
+- **Removed redundant JSON write-time re-validation.** `%write-json-string`
+  re-scanned every string for surrogates even though `handle-log-record`
+  already validated the whole record up front (the atomicity guarantee is
+  preserved by that up-front pass); the write path is now a single escape
+  scan instead of validate-then-escape.
+
+- **Allocation-free base-10 integer writer.** Timestamps and integer fields
+  went through `princ`/`write`, which route a plain integer through
+  `output-object` and the pretty-print dispatch table before emitting a
+  digit. `%write-integer` emits the base-10 digits directly (deriving each
+  from `(rem n 10)`, so it is decimal regardless of a caller-bound
+  `*print-base*` — which the JSON encoder needs for RFC 8259), handling
+  `most-negative-fixnum` in negative space and deferring only bignums to
+  the printer.
+
 ## [1.5.0] - 2026-07-25
 
 ### Added

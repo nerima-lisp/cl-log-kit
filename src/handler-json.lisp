@@ -16,78 +16,108 @@
 (defun %json-key-string (key)
   (etypecase key
     (string key)
+    ;; Keywords are the common case and their downcased name is interned once
+    ;; (see %CACHED-KEYWORD-NAME); only the rare non-keyword symbol pays a
+    ;; fresh STRING-DOWNCASE.
+    (keyword (%cached-keyword-name key))
     (symbol (string-downcase (symbol-name key)))))
 
 (defun %surrogate-code-point-p (code)
   (<= #xD800 code #xDFFF))
 
 (defun %validate-json-string (value)
-  (loop for character across value
-        for code = (char-code character)
-        when (%surrogate-code-point-p code)
-          do (error 'unsupported-json-value :value value
-                    :reason "strings must not contain Unicode surrogate code points"))
+  ;; A BASE-STRING holds only base-chars (code < 128 on SBCL), so it can never
+  ;; contain a Unicode surrogate (#xD800..#xDFFF): the whole scan is provably
+  ;; unnecessary and collapses to a single widetag test. ASCII log text — the
+  ;; overwhelming common case — takes exactly this exit.
+  (unless (typep value 'base-string)
+    ;; Otherwise dispatch once on simple-ness and index with SCHAR, avoiding
+    ;; the generic hairy-array element reader; a non-simple string (rare) is
+    ;; coerced once up front.
+    (let ((string (if (simple-string-p value) value (coerce value 'simple-string))))
+      (declare (type simple-string string))
+      (dotimes (index (length string))
+        (declare (type fixnum index))
+        (when (%surrogate-code-point-p (char-code (schar string index)))
+          (error 'unsupported-json-value :value value
+                 :reason "strings must not contain Unicode surrogate code points")))))
   value)
 
 (defun %write-json-string (value stream)
-  (%validate-json-string value)
+  ;; No surrogate re-validation here: every write path reaches this function
+  ;; only after HANDLE-LOG-RECORD has run %VALIDATE-JSON-RECORD over the whole
+  ;; record (and the fixed structural keys it also emits are ASCII literals),
+  ;; so the string is already known surrogate-free. Re-scanning it here just
+  ;; to re-derive that fact was a third full pass over every field string.
   (write-char #\" stream)
-  (let ((length (length value))
-        (run-start 0))
-    (declare (type fixnum length run-start))
+  ;; Bind STRING to a guaranteed-simple copy of VALUE (a no-op for the common
+  ;; already-simple string) so both the per-character SCHAR below and the
+  ;; run-flushing WRITE-STRING take the fast simple-array path.
+  (let* ((string (if (simple-string-p value) value (coerce value 'simple-string)))
+         (length (length string))
+         (run-start 0))
+    (declare (type simple-string string) (type fixnum length run-start))
     (flet ((flush-run (end)
              (declare (type fixnum end))
              (when (< run-start end)
-               (write-string value stream :start run-start :end end))))
+               (write-string string stream :start run-start :end end))))
       (dotimes (index length)
         (declare (type fixnum index))
-        (let* ((character (char value index))
-               (code (char-code character))
-               (escape (case character
-                         (#\" "\\\"")
-                         (#\\ "\\\\")
-                         (#\Backspace "\\b")
-                         (#\Page "\\f")
-                         (#\Newline "\\n")
-                         (#\Return "\\r")
-                         (#\Tab "\\t")
-                         (otherwise nil))))
+        (let ((character (schar string index)))
+          ;; Fast path (see the matching note in handler-text's
+          ;; %WRITE-TEXT-VALUE): a printable ASCII character escapes only if it
+          ;; is a quote or backslash, so ordinary text stays in the current
+          ;; run with one range test and two comparisons and never computes
+          ;; CHAR-CODE. The seven C0 escapes and the generic control escape
+          ;; live on the rare non-printable branch.
           (cond
-            (escape
-             (flush-run index)
-             (write-string escape stream)
-             (setf run-start (1+ index)))
-            ((or (< code 32) (= code 127))
-             (flush-run index)
-             (%write-unicode-escape code stream)
-             (setf run-start (1+ index))))))
+            ((char<= #\Space character #\~)
+             (case character
+               (#\" (flush-run index) (write-string "\\\"" stream) (setf run-start (1+ index)))
+               (#\\ (flush-run index) (write-string "\\\\" stream) (setf run-start (1+ index)))))
+            (t
+             (let ((code (char-code character)))
+               (declare (type fixnum code))
+               (let ((escape (case character
+                               (#\Backspace "\\b")
+                               (#\Page "\\f")
+                               (#\Newline "\\n")
+                               (#\Return "\\r")
+                               (#\Tab "\\t")
+                               (otherwise nil))))
+                 (cond
+                   (escape
+                    (flush-run index) (write-string escape stream) (setf run-start (1+ index)))
+                   ((or (< code 32) (= code 127))
+                    (flush-run index) (%write-unicode-escape code stream) (setf run-start (1+ index))))))))))
       (flush-run length)))
   (write-char #\" stream))
 
 (defun %finite-float-p (value)
-  (handler-case (let ((difference (- value value)))
-                  (and (= value value) (= difference difference)))
-    (arithmetic-error () nil)))
+  ;; Decode VALUE's raw exponent/mantissa bits rather than probing with
+  ;; arithmetic: the old (- value value) test boxed a fresh double on every
+  ;; call (twice per field — once to validate, once to write), while
+  ;; FLOAT-INFINITY-P / FLOAT-NAN-P never allocate and never trap. Callers
+  ;; only reach here with an actual float.
+  (not (or (sb-ext:float-infinity-p value) (sb-ext:float-nan-p value))))
 
 (defun %write-json-float (value stream)
   (unless (%finite-float-p value)
     (error 'unsupported-json-value :value value :reason "JSON numbers must be finite"))
   (if (zerop value)
       (write-string (if (minusp (float-sign value)) "-0.0" "0.0") stream)
-      (let* ((*print-pretty* nil)
-             (*print-readably* t)
-             (*print-base* 10)
-             (*print-radix* nil)
-             (rendered (write-to-string value)))
-        ;; SBCL's printer marks single/double/short/long floats with a
-        ;; letter exponent (1.5f0, 1.5d0, ...); JSON has no exponent letter
-        ;; but 'e', so every implementation-specific marker collapses onto
-        ;; the one JSON accepts. Downcasing and normalizing in one pass over
-        ;; RENDERED, writing straight to STREAM, avoids the STRING-DOWNCASE
-        ;; plus four SUBSTITUTE calls each allocating a full extra copy.
-        (loop for character across rendered
-              for lower = (char-downcase character)
-              do (write-char (case lower ((#\s #\f #\d #\l) #\e) (otherwise lower)) stream)))))
+      ;; Binding *READ-DEFAULT-FLOAT-FORMAT* to VALUE's own type makes SBCL's
+      ;; printer emit the exponent marker as a bare 'e' (or omit it) instead
+      ;; of the type-specific letter (1.5d0, 1.5f0, ...) — so the printed form
+      ;; is already strict RFC 8259, needing neither an intermediate string
+      ;; nor a normalizing pass. PRIN1 straight to STREAM then conses nothing
+      ;; per call (WRITE-TO-STRING allocated a full fresh string every time).
+      ;; SBCL aliases SHORT-FLOAT to SINGLE-FLOAT and LONG-FLOAT to
+      ;; DOUBLE-FLOAT, so these two branches cover all four float types.
+      (let ((*read-default-float-format* (etypecase value
+                                           (double-float 'double-float)
+                                           (single-float 'single-float))))
+        (prin1 value stream))))
 
 (defun %write-json-object (object stream)
   (%write-json-members (%json-object-members object) stream))
@@ -108,7 +138,10 @@
     ((json-object-p value) (%write-json-object value stream))
     ((json-array-p value) (%write-json-array value stream))
     ((stringp value) (%write-json-string value stream))
-    ((integerp value) (format stream "~D" value))
+    ;; %WRITE-INTEGER emits base-10 digits directly, so it is both faster than
+    ;; the printer and immune to a caller-bound *PRINT-BASE* that could
+    ;; otherwise produce a non-decimal (invalid-JSON) integer.
+    ((integerp value) (%write-integer value stream))
     ((floatp value) (%write-json-float value stream))
     ((symbolp value)
      (%write-json-string (%symbol-field-string value)
@@ -176,4 +209,9 @@ object. Shared by %WRITE-JSON-OBJECT (explicit nested objects) and the record
 (defmethod handle-log-record ((handler json-handler) record)
   (check-type record log-record)
   (%validate-json-record record)
-  (%write-handler-record handler (lambda (stream) (%write-json-record record stream))))
+  ;; Stack-allocate the writer closure: %WRITE-HANDLER-RECORD invokes it
+  ;; synchronously under the stream lock and never stores it, so its extent is
+  ;; dynamic and the capture of RECORD need not touch the heap.
+  (flet ((writer (stream) (%write-json-record record stream)))
+    (declare (dynamic-extent #'writer))
+    (%write-handler-record handler #'writer)))
