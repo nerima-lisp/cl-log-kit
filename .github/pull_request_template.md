@@ -9,7 +9,7 @@ something could not be run.
 
 ```
 # e.g. nix flake check --print-build-logs
-#      nix develop -c sbcl --script run-ci.lisp coverage 180
+#      nix develop -c sbcl --script run-coverage.lisp
 ```
 
 ## Public Surface Impact

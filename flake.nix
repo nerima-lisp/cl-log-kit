@@ -2,46 +2,48 @@
   description = "Dependency-free, SBCL-only structured logging toolkit for Common Lisp";
 
   inputs = {
+    # nixos-unstable, not nixpkgs-unstable: it only advances after the NixOS
+    # release tests pass, so it is less likely to land a broken build.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # paredit-cli is both a dev-lint input of the nerima-lisp packages below
-    # (whose flakes still point at the pre-move github:takeokunn/paredit-cli
-    # URL, so every transitive copy is pinned to the current
-    # github:nerima-lisp org here to keep this lock free of takeokunn
-    # references) and the structural-refactoring CLI this repository's own
-    # contributors use. Its Lisp-source flakes never reach cl-log-kit's
-    # CL_SOURCE_REGISTRY (it is a standalone Rust binary, not an ASDF
-    # system), but the binary itself is exposed in devShells.default below.
-    paredit-cli = {
-      url = "github:nerima-lisp/paredit-cli";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    # Pinned to the tag matching cl-log-kit.asd's (:version "cl-weave"
-    # "1.0.0") floor on the cl-log-kit/test system: without an explicit ref
-    # here, `nix flake update` would float this input onto the default
-    # branch and could silently drop below the version the .asd requires.
-    # Bump this ref in lockstep with any future :version bump in the .asd.
+
+    # Sibling packages consumed purely as ASDF source are pulled with
+    # `flake = false`. Their own flake.nix is then never evaluated, so this
+    # lock stays free of their transitive input closures instead of dragging
+    # in a second cl-weave at a different tag, as it previously did.
+    #
+    # Every one of these is test/dev-only. The shipped cl-log-kit system
+    # depends on nothing but ASDF, and that is the property the package is
+    # built around.
+
+    # Test framework. Pinned to the tag matching cl-log-kit.asd's
+    # (:version "cl-weave" "1.0.0") floor on the cl-log-kit/test system; bump
+    # this ref in lockstep with any future bump of that floor.
     cl-weave = {
       url = "github:nerima-lisp/cl-weave/v1.0.0";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.paredit-cli.follows = "paredit-cli";
+      flake = false;
     };
-    # Dev tooling only (run-ci.lisp's timeout enforcement): not declared as
-    # a dependency of either ASDF system, so it deliberately tracks the
-    # default branch rather than a version-matched tag.
-    cl-process-kit = {
-      url = "github:nerima-lisp/cl-process-kit";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.cl-weave.inputs.paredit-cli.follows = "paredit-cli";
-    };
+
     # Test-only: an independent JSON parser the json-handler specs use to
-    # assert emitted output parses back to the expected structure. Not a
-    # dependency of the shipped cl-log-kit system. Pinned to the tag
-    # matching cl-log-kit.asd's (:version "cl-json-kit" "1.0.0") floor on
-    # the cl-log-kit/test system, for the same reason as cl-weave above.
+    # assert emitted output parses back to the expected structure rather than
+    # merely containing the right substrings. Pinned to the .asd floor, as
+    # cl-weave above.
     cl-json-kit = {
       url = "github:nerima-lisp/cl-json-kit/v1.0.0";
+      flake = false;
+    };
+
+    # The structural-refactoring CLI contributors run by hand. Kept as a real
+    # flake because devShells.default consumes its package output, not its
+    # source tree; it is a Rust binary and never reaches CL_SOURCE_REGISTRY.
+    paredit-cli = {
+      url = "github:nerima-lisp/paredit-cli/v1.0.0";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.cl-weave.inputs.paredit-cli.follows = "paredit-cli";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+    };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -51,54 +53,52 @@
       nixpkgs,
       paredit-cli,
       cl-weave,
-      cl-process-kit,
       cl-json-kit,
+      treefmt-nix,
       ...
     }:
     let
+      # x86_64-linux is what CI builds. aarch64-darwin is declared as well
+      # because it is the platform the benchmark figures in the docs were
+      # measured on and where the suite is run before every release, so it is
+      # verified rather than merely hoped for.
       systems = [
         "x86_64-linux"
         "aarch64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-      # cl-weave and cl-process-kit are the real, upstream dependencies (not
-      # vendored): their flake source trees are appended to
-      # CL_SOURCE_REGISTRY so ASDF resolves both the same way in
-      # `nix develop`, `nix flake check`, and the packaged apps.
-      # cl-process-kit backs only run-ci.lisp's timeout enforcement — it is
-      # not a dependency of the cl-log-kit or cl-log-kit/test systems, so
-      # the shipped library stays dependency-free.
-      sourceRegistry = "${self}//:${cl-weave}//:${cl-process-kit}//:${cl-json-kit}//";
 
-      # Builds docs/ (MkDocs + Material) fully offline: Material for MkDocs
-      # bundles all of its assets, so no network access is required inside
-      # the Nix sandbox. --strict promotes broken links and unlisted pages
-      # to build failures.
-      mkDocs =
-        pkgs:
-        pkgs.stdenvNoCC.mkDerivation {
-          pname = "cl-log-kit-docs";
-          version = "1.0.0";
-          src = pkgs.lib.fileset.toSource {
-            root = ./docs;
-            fileset = pkgs.lib.fileset.unions [
-              ./docs/mkdocs.yml
-              ./docs/src
-            ];
-          };
-          nativeBuildInputs = [ pkgs.python3Packages.mkdocs-material ];
-          buildPhase = ''
-            runHook preBuild
-            mkdocs build --strict --config-file mkdocs.yml --site-dir "$out"
-            runHook postBuild
-          '';
-          dontInstall = true;
-          meta = {
-            description = "Rendered MkDocs (Material) documentation for cl-log-kit";
-            homepage = "https://github.com/nerima-lisp/cl-log-kit";
-            license = pkgs.lib.licenses.mit;
-          };
-        };
+      # cl-weave and cl-json-kit are appended to CL_SOURCE_REGISTRY so ASDF
+      # resolves them identically in `nix develop`, `nix flake check`, and the
+      # packaged apps.
+      sourceRegistry = "${self}//:${cl-weave}//:${cl-json-kit}//";
+
+      # Single source of truth for the version: the :version form in
+      # cl-log-kit.asd. A release edits that one line and every Nix package
+      # follows; release.yml refuses to publish a tag that disagrees with it.
+      # Nix regexes are anchored to the whole string and `.` never spans
+      # newlines, so the value is extracted line-by-line rather than with one
+      # multi-line match.
+      version =
+        let
+          lines = nixpkgs.lib.splitString "\n" (builtins.readFile ./cl-log-kit.asd);
+          versionLine = builtins.head (
+            builtins.filter (line: builtins.match "[[:space:]]*:version \"[^\"]*\"" line != null) lines
+          );
+        in
+        builtins.head (builtins.match "[[:space:]]*:version \"([^\"]*)\"" versionLine);
+
+      # treefmt drives `nix fmt` and the checks.formatting gate. Scope is Nix
+      # only: a YAML formatter mangles the GitHub Actions `on:` key, and
+      # reformatting Markdown would churn every page in docs/src for no
+      # reviewable gain.
+      treefmtEval = forAllSystems (
+        system:
+        treefmt-nix.lib.evalModule nixpkgs.legacyPackages.${system} {
+          projectRootFile = "flake.nix";
+          programs.nixfmt.enable = true;
+        }
+      );
     in
     {
       packages = forAllSystems (
@@ -109,32 +109,89 @@
         rec {
           cl-log-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "1.0.0";
+            inherit version;
             src = self;
             systems = [ "cl-log-kit" ];
           };
-          docs = mkDocs pkgs;
           default = cl-log-kit;
+
+          # Builds docs/ (MkDocs + Material) fully offline: Material bundles
+          # all of its assets, so the Nix sandbox needs no network. --strict
+          # promotes broken links and pages missing from the nav to build
+          # failures.
+          #
+          # The source root is the repository, not ./docs, because
+          # docs/src/changelog.md is a `--8<--` include of the top-level
+          # CHANGELOG.md. Keeping one copy is what stops the site's history
+          # from falling behind the file GitHub shows on the release page —
+          # they had already diverged to 40 lines against 275.
+          docs = pkgs.stdenvNoCC.mkDerivation {
+            pname = "cl-log-kit-docs";
+            inherit version;
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.unions [
+                ./docs/mkdocs.yml
+                ./docs/src
+                ./CHANGELOG.md
+              ];
+            };
+            nativeBuildInputs = [ pkgs.python3Packages.mkdocs-material ];
+            buildPhase = ''
+              runHook preBuild
+              mkdocs build --strict --config-file docs/mkdocs.yml --site-dir "$out"
+              runHook postBuild
+            '';
+            dontInstall = true;
+            meta = {
+              description = "Rendered MkDocs (Material) documentation for cl-log-kit";
+              homepage = "https://github.com/nerima-lisp/cl-log-kit";
+              license = pkgs.lib.licenses.mit;
+            };
+          };
         }
       );
 
+      # `nix fmt` entry point.
+      formatter = forAllSystems (system: treefmtEval.${system}.config.build.wrapper);
+
+      # Granularity lives here, not in extra GitHub Actions jobs: `nix flake
+      # check` evaluates each attribute as its own derivation, in parallel,
+      # with build caching. Add a check here rather than a job in ci.yml.
       checks = forAllSystems (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          default = pkgs.runCommand "cl-log-kit-tests"
-            {
-              nativeBuildInputs = [ pkgs.sbcl ];
-              CL_SOURCE_REGISTRY = sourceRegistry;
-            }
-            ''
-              export HOME="$TMPDIR/home"
-              mkdir -p "$HOME" "$out"
-              sbcl --script ${self}/run-ci.lisp tests
-              touch "$out/passed"
-            '';
+          # `timeout` bounds the suite so a reintroduced lifecycle deadlock
+          # fails the build after two minutes instead of running to the
+          # sandbox's own ceiling.
+          default =
+            pkgs.runCommand "cl-log-kit-tests"
+              {
+                nativeBuildInputs = [
+                  pkgs.sbcl
+                  pkgs.coreutils
+                ];
+                CL_SOURCE_REGISTRY = sourceRegistry;
+              }
+              ''
+                export HOME="$TMPDIR/home"
+                mkdir -p "$HOME" "$out"
+                timeout 120 sbcl --script ${self}/run-tests.lisp
+                touch "$out/passed"
+              '';
+
+          # Fails `nix flake check` when any tracked Nix file is unformatted,
+          # turning the formatter into an enforced gate rather than a
+          # convention.
+          formatting = treefmtEval.${system}.config.build.check self;
+
+          # Without this the docs are only ever built by the publish workflow,
+          # which runs after a merge to main — so a broken link surfaces as a
+          # failed deploy instead of as a failed pull request.
+          docs = self.packages.${system}.docs;
         }
       );
 
@@ -142,23 +199,20 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          # Runs through run-ci.lisp, which enforces a real, escalating
-          # (SIGTERM then SIGKILL) timeout on the underlying sbcl child
-          # process via nerima-lisp/cl-process-kit, instead of relying on a
-          # caller to remember to prepend `timeout 120s`.
-          #
-          # There is deliberately no `coverage` app here: `nix run` executes
-          # against an immutable, read-only copy of the source under
-          # /nix/store, and run-coverage.lisp needs to write coverage/
-          # next to the source it instruments. Coverage stays a `nix
-          # develop` workflow (`sbcl --script run-ci.lisp coverage`), where
-          # the working tree is real and writable; see README.md.
+          # There is deliberately no `coverage` app: `nix run` executes
+          # against an immutable copy of the source under /nix/store, and
+          # run-coverage.lisp writes coverage/ next to the source it
+          # instruments. Coverage stays a `nix develop` workflow, where the
+          # working tree is real and writable; see docs/src/development.md.
           test = pkgs.writeShellApplication {
             name = "cl-log-kit-test";
-            runtimeInputs = [ pkgs.sbcl ];
+            runtimeInputs = [
+              pkgs.sbcl
+              pkgs.coreutils
+            ];
             text = ''
               export CL_SOURCE_REGISTRY="${sourceRegistry}"
-              exec sbcl --script ${self}/run-ci.lisp tests
+              exec timeout 120 sbcl --script ${self}/run-tests.lisp
             '';
           };
         in
