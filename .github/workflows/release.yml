@@ -28,18 +28,16 @@ jobs:
       # where it can still be corrected cheaply. Without this gate the two drift
       # silently, which is how cl-boundary-kit reached :version 1.0.0 while its
       # newest tag was still v0.6.0.
-      #
-      # Replace cl-log-kit below with the repository's system name.
       - name: Verify tag matches .asd version
         env:
-          cl-log-kit: cl-log-kit
+          PACKAGE: cl-log-kit
         run: |
           set -euo pipefail
-          asd_version="$(sed -n 's/^[[:space:]]*:version "\([^"]*\)".*/\1/p' "$cl-log-kit.asd" | head -n1)"
+          asd_version="$(sed -n 's/^[[:space:]]*:version "\([^"]*\)".*/\1/p' "$PACKAGE.asd" | head -n1)"
           tag_version="${GITHUB_REF_NAME#v}"
           echo "asd=$asd_version tag=$tag_version"
           if [[ "$asd_version" != "$tag_version" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match $cl-log-kit.asd version $asd_version" >&2
+            echo "::error::Tag $GITHUB_REF_NAME does not match $PACKAGE.asd version $asd_version" >&2
             exit 1
           fi
 
