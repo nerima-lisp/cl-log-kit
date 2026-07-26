@@ -13,6 +13,12 @@
 ;;; on every DEFUN in the file.
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
+;;; Named once so the writer and the validator report the same reason: the two
+;;; walk the same type dispatch, and a reader who hits one message must be able
+;;; to trust it describes the other path too.
+(defparameter +unsupported-json-value-reason+
+  "supported values are explicit JSON values, strings, integers, finite floats, and symbols")
+
 (defun %json-key-string (key)
   (etypecase key
     (string key)
@@ -89,7 +95,8 @@
                    (escape
                     (flush-run index) (write-string escape stream) (setf run-start (1+ index)))
                    ((or (< code 32) (= code 127))
-                    (flush-run index) (%write-unicode-escape code stream) (setf run-start (1+ index))))))))))
+                    (flush-run index) (%write-unicode-escape code stream)
+                    (setf run-start (1+ index))))))))))
       (flush-run length)))
   (write-char #\" stream))
 
@@ -147,7 +154,7 @@
      (%write-json-string (%symbol-field-string value)
                          stream))
     (t (error 'unsupported-json-value :value value
-              :reason "supported values are explicit JSON values, strings, integers, finite floats, and symbols"))))
+              :reason +unsupported-json-value-reason+))))
 
 (defun %write-json-field (key value first-p stream)
   (unless first-p (write-char #\, stream))
@@ -186,7 +193,7 @@ object. Shared by %WRITE-JSON-OBJECT (explicit nested objects) and the record
     ((symbolp value)
      (%validate-json-string (%symbol-field-string value)))
     (t (error 'unsupported-json-value :value value
-              :reason "supported values are explicit JSON values, strings, integers, finite floats, and symbols"))))
+              :reason +unsupported-json-value-reason+))))
 
 (defun %validate-json-record (record)
   (%validate-json-string (%log-record-logger-name record))

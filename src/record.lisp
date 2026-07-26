@@ -26,8 +26,10 @@
                                   :fields fields
                                   :logger-name (copy-seq logger-name)))
 
-(defun make-log-record (&key (level (%constant-default +level-info+)) (message (%constant-default ""))
-                        (timestamp (%constant-default 0)) (fields (%constant-default nil))
+(defun make-log-record (&key (level (%constant-default +level-info+))
+                        (message (%constant-default ""))
+                        (timestamp (%constant-default 0))
+                        (fields (%constant-default nil))
                         (logger-name (%constant-default "root")))
   "Build a LOG-RECORD directly, snapshotting FIELDS (a plist) the same way a
 LOGGER's own emit path does. Most callers should log through a LOGGER

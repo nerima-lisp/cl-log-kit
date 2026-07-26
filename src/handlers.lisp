@@ -15,8 +15,10 @@
 applying ERROR-POLICY (:SIGNAL, :CONTINUE, or :CALLBACK) when a child
 signals. See MAKE-MULTI-HANDLER."))
 
-(defmethod initialize-instance :after ((instance multi-handler) &key (handlers (%constant-default nil))
-                                       (error-policy (%constant-default :signal)) error-callback)
+(defmethod initialize-instance :after ((instance multi-handler)
+                                       &key (handlers (%constant-default nil))
+                                       (error-policy (%constant-default :signal))
+                                       error-callback)
   (unless (%proper-list-p handlers)
     (%invalid-fields handlers "handler collection must be a finite proper list"))
   (dolist (target handlers)

@@ -85,7 +85,8 @@ rendered log line look different from what it actually contains."
                 ((char<= #\Space character #\~)
                  (case character
                    (#\" (flush-run index) (write-string "\\\"" stream) (setf run-start (1+ index)))
-                   (#\\ (flush-run index) (write-string "\\\\" stream) (setf run-start (1+ index)))))
+                   (#\\ (flush-run index) (write-string "\\\\" stream)
+                        (setf run-start (1+ index)))))
                 (t
                  (let ((code (char-code character)))
                    (declare (type fixnum code))
@@ -98,7 +99,8 @@ rendered log line look different from what it actually contains."
                       (flush-run index) (write-string "\\t" stream) (setf run-start (1+ index)))
                      ((or (< code 32) (= code 127) (= code #x2028) (= code #x2029)
                           (<= #xD800 code #xDFFF) (%text-spoof-character-p code))
-                      (flush-run index) (%write-unicode-escape code stream) (setf run-start (1+ index)))))))))
+                      (flush-run index) (%write-unicode-escape code stream)
+                      (setf run-start (1+ index)))))))))
           (flush-run length)))))
 
 (defun %write-text-record (record output)

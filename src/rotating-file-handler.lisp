@@ -15,7 +15,8 @@
 YYYY-MM-DD string. A custom clock must also return values that sort
 lexicographically in the same order as chronological order, since ordering
 rotated files for retention purposes uses a plain string comparison."
-  (multiple-value-bind (second minute hour day month year) (decode-universal-time (get-universal-time))
+  (multiple-value-bind (second minute hour day month year)
+      (decode-universal-time (get-universal-time))
     (declare (ignore second minute hour))
     (format nil "~4,'0D-~2,'0D-~2,'0D" year month day)))
 
@@ -56,8 +57,12 @@ every write: when CLOCK's return value changes, the current file is closed
 and a fresh one for the new bucket is opened. MAX-FILES bounds how many
 rotated files (including the current one) are kept, oldest deleted first;
 0 (the default) keeps every rotated file."
-  (make-instance 'rotating-file-handler :base-pathname base-pathname :max-files max-files
-                                        :wire-format wire-format :auto-flush auto-flush :clock clock))
+  (make-instance 'rotating-file-handler
+                 :base-pathname base-pathname
+                 :max-files max-files
+                 :wire-format wire-format
+                 :auto-flush auto-flush
+                 :clock clock))
 
 (defun %rotated-log-pathname (base-pathname bucket)
   (make-pathname :name (format nil "~A-~A" (pathname-name base-pathname) bucket)
@@ -122,9 +127,10 @@ called with HANDLER's lock held."
       (let ((old (%rotating-handler-inner handler)))
         (when old (close-handler old)))
       (setf (%rotating-handler-inner handler)
-            (%open-rotation-stream-handler (%rotating-handler-wire-format handler)
-                                           (%rotated-log-pathname (%rotating-handler-base-pathname handler) bucket)
-                                           (%rotating-handler-auto-flush-p handler))
+            (%open-rotation-stream-handler
+             (%rotating-handler-wire-format handler)
+             (%rotated-log-pathname (%rotating-handler-base-pathname handler) bucket)
+             (%rotating-handler-auto-flush-p handler))
             (%rotating-handler-current-bucket handler) bucket)
       (%purge-old-log-files handler)))
   (%rotating-handler-inner handler))

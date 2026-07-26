@@ -149,7 +149,9 @@ walk, so a circular list is still rejected as a cycle rather than followed."
                       (%note-snapshot-node context depth))
                     (%check-snapshot-size :array-elements (incf length)
                                           +max-log-field-array-elements+)
-                    (let ((copy (cons (%snapshot-field-value (car current) context (1+ depth)) nil)))
+                    (let ((copy (cons (%snapshot-field-value (car current) context
+                                                             (1+ depth))
+                                      nil)))
                       (if tail (setf (cdr tail) copy) (setf head copy))
                       (setf tail copy)))
                    (t

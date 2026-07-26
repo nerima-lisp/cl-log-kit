@@ -105,7 +105,8 @@ than an explicit logger argument." explicit)
   (loop for (key . value) in fields append (list key value)))
 
 (defun %merge-field-plists (preferred fallback)
-  (%field-alist-to-plist (%merge-field-alists (plist-to-alist preferred) (plist-to-alist fallback))))
+  (%field-alist-to-plist (%merge-field-alists (plist-to-alist preferred)
+                                              (plist-to-alist fallback))))
 
 (defun %without-field-keys (fields keys)
   (%field-alist-to-plist

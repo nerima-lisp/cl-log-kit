@@ -47,9 +47,11 @@ logger emits.")
         unless (member key '(:name :handler :level :fields :clock) :test #'eq)
           do (error 'program-error)))
 
-(defmethod initialize-instance :around ((instance logger) &rest initargs &key (name (%constant-default "root"))
+(defmethod initialize-instance :around ((instance logger) &rest initargs
+                                        &key (name (%constant-default "root"))
                                         (handler (%constant-default (make-instance 'text-handler)))
-                                        (level (%constant-default +level-info+)) (fields (%constant-default nil))
+                                        (level (%constant-default +level-info+))
+                                        (fields (%constant-default nil))
                                         (clock (%constant-default #'%unix-time)))
   (%validate-logger-initargs initargs)
   (check-types (name string) (handler handler) (level integer) (clock function))
@@ -66,8 +68,10 @@ logger emits.")
   "A fresh, recursively copied alist of LOGGER's contextual fields."
   (%copy-field-alist (%logger-fields logger)))
 
-(defun make-logger (&key (name (%constant-default "root")) (handler (%constant-default (make-instance 'text-handler)))
-                    (level (%constant-default +level-info+)) (fields (%constant-default nil))
+(defun make-logger (&key (name (%constant-default "root"))
+                    (handler (%constant-default (make-instance 'text-handler)))
+                    (level (%constant-default +level-info+))
+                    (fields (%constant-default nil))
                     (clock (%constant-default #'%unix-time)))
   "Build a LOGGER named NAME (default \"root\"), emitting through HANDLER
 (default a fresh TEXT-HANDLER on *STANDARD-OUTPUT*) at or above LEVEL
@@ -102,8 +106,10 @@ key. LOGGER itself is unchanged."
                               (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
                               (logger-clock logger)))
 
-(defun derive-logger (logger &key (name (%constant-default nil) name-p) (handler (%constant-default nil) handler-p)
-                      (level (%constant-default nil) level-p) (fields (%constant-default nil) fields-p)
+(defun derive-logger (logger &key (name (%constant-default nil) name-p)
+                      (handler (%constant-default nil) handler-p)
+                      (level (%constant-default nil) level-p)
+                      (fields (%constant-default nil) fields-p)
                       (clock (%constant-default nil) clock-p))
   "Return a new logger like LOGGER, with each supplied keyword argument
 overriding the corresponding slot; an omitted keyword keeps LOGGER's

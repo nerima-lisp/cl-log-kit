@@ -10,10 +10,12 @@
 
 (defclass buffered-handler (close-managed-handler)
   ((target :initarg :target :reader %buffered-handler-target)
-   (trigger-level :initarg :trigger-level :initform +level-error+ :reader %buffered-handler-trigger-level)
+   (trigger-level :initarg :trigger-level :initform +level-error+
+                  :reader %buffered-handler-trigger-level)
    (buffer-size :initarg :buffer-size :initform 0 :reader %buffered-handler-buffer-size)
    (stop-buffering :initarg :stop-buffering :initform t :reader %buffered-handler-stop-buffering-p)
-   (lock :initform (sb-thread:make-mutex :name "cl-log-kit buffered-handler") :reader %buffered-handler-lock)
+   (lock :initform (sb-thread:make-mutex :name "cl-log-kit buffered-handler")
+         :reader %buffered-handler-lock)
    (buffer :initform nil :accessor %buffered-handler-buffer)
    (buffer-count :initform 0 :accessor %buffered-handler-buffer-count)
    (activated-p :initform nil :accessor %buffered-handler-activated-p))

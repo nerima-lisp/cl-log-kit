@@ -107,7 +107,8 @@ truncated as-is, any other object is rendered like a condition message."
     fields))
 
 (defun condition-fields (condition &key backtrace (capture-backtrace (%constant-default nil))
-                         (render-report (%constant-default nil)) (message-limit (%constant-default 2048))
+                         (render-report (%constant-default nil))
+                         (message-limit (%constant-default 2048))
                          (backtrace-limit (%constant-default 8192)))
   "Return a fields plist describing CONDITION: :CONDITION-TYPE, always; a
 bounded :CONDITION-MESSAGE only when RENDER-REPORT is true (otherwise just

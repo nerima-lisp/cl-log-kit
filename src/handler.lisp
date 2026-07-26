@@ -56,8 +56,9 @@ CLOSE-HANDLER, to emit a LOG-RECORD exactly once."))
   (sb-thread:with-mutex (*stream-state-registry-lock*)
     (or (gethash stream *stream-state-registry*)
         (setf (gethash stream *stream-state-registry*)
-              (%make-stream-state (sb-thread:make-mutex :name "cl-log-kit stream output")
-                                  (sb-thread:make-waitqueue :name "cl-log-kit stream lifecycle"))))))
+              (%make-stream-state
+               (sb-thread:make-mutex :name "cl-log-kit stream output")
+               (sb-thread:make-waitqueue :name "cl-log-kit stream lifecycle"))))))
 
 (defclass %stream-handler (handler)
   ((stream :initarg :stream :initform *standard-output* :reader %handler-stream)
@@ -136,7 +137,8 @@ immediately instead of deadlocking on itself."
                   do (unless waited-p
                        (incf (%stream-state-waiters state))
                        (setf waited-p t))
-                     (sb-thread:condition-wait (%stream-state-waitqueue state) (%stream-state-lock state))
+                     (sb-thread:condition-wait (%stream-state-waitqueue state)
+                                               (%stream-state-lock state))
                      (%ensure-open-handler handler state))
           (when waited-p (decf (%stream-state-waiters state)))))
       (setf (%stream-state-operation-owner state) thread)
@@ -152,7 +154,8 @@ immediately instead of deadlocking on itself."
       (when (zerop (%stream-state-operation-depth state))
         (setf (%stream-state-operation-owner state) nil)
         (%notify-stream-waiters state))
-      (when (and (%stream-state-close-pending-p state) (zerop (%stream-state-active-operations state)))
+      (when (and (%stream-state-close-pending-p state)
+                 (zerop (%stream-state-active-operations state)))
         (setf (%stream-state-close-pending-p state) nil
               close-stream-p t))
       (when (zerop (%stream-state-active-operations state))
@@ -190,7 +193,8 @@ with STATE's lock held; CONDITION-WAIT releases and reacquires it."
   (incf (%stream-state-waiters state))
   (unwind-protect
       (loop until (funcall predicate state)
-            do (sb-thread:condition-wait (%stream-state-waitqueue state) (%stream-state-lock state)))
+            do (sb-thread:condition-wait (%stream-state-waitqueue state)
+                                         (%stream-state-lock state)))
     (decf (%stream-state-waiters state))))
 
 (defun %thread-owns-stream-operation-p (state)
