@@ -86,7 +86,7 @@ Tests live in `t/`, mirroring `src/` file by file. Beyond ordinary
 `describe`/`it`/`expect` specs, this suite uses several of `cl-weave`'s more
 advanced facilities rather than hand-rolling equivalents:
 
-- **Domain matchers.** `t/matchers.lisp` registers `cl-weave:expect-extend`
+- **Domain matchers.** `t/helpers-matchers.lisp` registers `cl-weave:expect-extend`
   matchers (`:to-have-field`, `:to-have-field-matching`, `:to-lack-field`,
   `:to-be-single-line`, `:to-have-recorded`, `:to-contain-substring`) so
   specs read as `(expect fields :to-have-field :k "v")` instead of manually

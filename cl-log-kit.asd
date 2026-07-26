@@ -57,8 +57,8 @@
   :pathname "t"
   :serial t
   :components ((:file "package")
-               (:file "support")
-               (:file "matchers")
+               (:file "helpers-fixtures")
+               (:file "helpers-matchers")
                (:file "record-test")
                (:file "handler-test")
                (:file "handler-text-test")

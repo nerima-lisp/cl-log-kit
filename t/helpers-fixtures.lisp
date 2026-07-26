@@ -1,4 +1,4 @@
-;;;; t/support.lisp
+;;;; t/helpers-fixtures.lisp
 ;;;
 ;;; Shared test toolkit: the fixtures and helpers every spec file builds on.
 ;;; Keeping them here (loaded first) means no spec file has to reach into
