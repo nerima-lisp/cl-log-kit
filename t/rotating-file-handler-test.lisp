@@ -83,17 +83,19 @@
         (expect (probe-file (merge-pathnames "app-2026-07-24" dir)) :to-be-truthy)
         (expect (probe-file (merge-pathnames "app-2026-07-25" dir)) :to-be-truthy))))
 
-  (it "keeps the retention glob confined to its own base pathname's shape"
-    ;; The widened glob must not start sweeping up neighbouring files: an
-    ;; extension-less base matches only extension-less rotations, and a
-    ;; "*.log" base only ".log" ones.
+  (it "keeps the retention matcher confined to its own base pathname's shape"
+    ;; The matcher must not sweep up neighbouring files: an extension-less
+    ;; base matches only extension-less rotations, and a "*.log" base only
+    ;; ".log" ones.
     (with-fresh-log-directory (dir)
       (dolist (name '("app-2026-07-22" "app-2026-07-23.log" "other-2026-07-22"))
         (close (open (merge-pathnames name dir) :direction :output :if-does-not-exist :create)))
       (flet ((matches (base)
-               (sort (mapcar #'file-namestring
-                             (directory (log-kit::%rotated-log-glob (merge-pathnames base dir))))
-                     #'string<)))
+               (let ((base-pathname (merge-pathnames base dir)))
+                 (sort (mapcar #'file-namestring
+                               (remove-if-not (lambda (file) (log-kit::%rotated-log-file-p base-pathname file))
+                                              (host-kit:directory-files dir)))
+                       #'string<))))
         (expect (matches "app") :to-equal '("app-2026-07-22"))
         (expect (matches "app.log") :to-equal '("app-2026-07-23.log")))))
 
