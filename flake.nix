@@ -21,7 +21,7 @@
 
     # Runtime dependency: calendar/time-zone handling for
     # rotating-file-handler's date-bucket derivation. Pinned to the tag
-    # matching cl-log-kit.asd's (:version "cl-date-kit" "0.1.0") floor.
+    # matching cl-log-kit.asd's (:version "cl-date-kit" "0.2.0") floor.
     # `cl-nix-forge.follows` keeps every sibling's dependency-ancestry
     # bookkeeping (lib/core/dedup.nix) built by the SAME cl-nix-forge
     # revision as this flake's own `lispDerivation` call; without it, two
@@ -29,7 +29,7 @@
     # `lib.core.dedup.ancestryWalker` fails with "attribute 'ancestry'
     # missing" trying to walk a dependency's subtree built by the other one.
     cl-date-kit = {
-      url = "github:nerima-lisp/cl-date-kit/v0.1.0";
+      url = "github:nerima-lisp/cl-date-kit/v0.2.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -45,11 +45,10 @@
     };
 
     # Runtime dependency: directory listing/deletion/path-confinement for
-    # rotating-file-handler's retention pruning. No release has been tagged
-    # upstream yet, so this is pinned by commit rather than a tag; re-pin to
-    # a tag once cl-host-kit cuts one.
+    # rotating-file-handler's retention pruning. Pinned to the tag matching
+    # cl-log-kit.asd's (:version "cl-host-kit" "0.2.0") floor.
     cl-host-kit = {
-      url = "github:nerima-lisp/cl-host-kit/a40d4ee3a5d3835de496233b15748e55f037af19";
+      url = "github:nerima-lisp/cl-host-kit/v0.2.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -142,19 +141,17 @@
       # sibling's own flake builds its ASDF system, so this is an ordinary
       # `lispDependencies` entry rather than a hand-rolled registry string.
       #
-      # At the exact refs pinned above, all three sibling packages still
-      # build themselves by hand with `pkgs.sbcl.buildASDFSystem` rather
-      # than `mkPackageFlake` (each has since migrated upstream, but only on
-      # commits after these tags/pins), so none of their outputs carry
-      # cl-nix-forge's own dependency-ancestry metadata; `dedup.nix` cannot
-      # merge such a derivation into this package's own dependency tree
-      # without `fromDerivation` wrapping it into a leaf first. Drop each
-      # wrapper as its sibling's `mkPackageFlake` migration reaches a tagged
-      # release this flake can pin to.
+      # cl-date-kit's v0.2.0 and cl-host-kit's v0.2.0 tags already build
+      # themselves with `mkPackageFlake`, so their package outputs carry
+      # cl-nix-forge's own dependency-ancestry metadata as-is.
+      # cl-concurrent-kit's v0.1.0 tag still predates that migration, so it
+      # needs `fromDerivation` leaf-wrapping until a `mkPackageFlake` release
+      # is tagged upstream -- without it, `dedup.nix` cannot merge its
+      # ancestry-less output into this package's own dependency tree.
       lispDependencies = ctx: [
-        (ctx.cl.fromDerivation { drv = cl-date-kit.packages.${ctx.system}.cl-date-kit; })
+        cl-date-kit.packages.${ctx.system}.cl-date-kit
         (ctx.cl.fromDerivation { drv = cl-concurrent-kit.packages.${ctx.system}.cl-concurrent-kit; })
-        (ctx.cl.fromDerivation { drv = cl-host-kit.packages.${ctx.system}.cl-host-kit; })
+        cl-host-kit.packages.${ctx.system}.cl-host-kit
       ];
 
       # cl-weave and cl-json-kit are dependencies of cl-log-kit/test and of

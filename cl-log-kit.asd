@@ -14,9 +14,9 @@
   ;; stale system ASDF fails fast with a clear version error instead of a
   ;; confusing missing-function error deep in the load.
   :depends-on ((:version "asdf" "3.3.1")
-               (:version "cl-date-kit" "0.1.0")
+               (:version "cl-date-kit" "0.2.0")
                (:version "cl-concurrent-kit" "0.1.0")
-               (:version "cl-host-kit" "0.1.0"))
+               (:version "cl-host-kit" "0.2.0"))
   :pathname "src"
   :serial t
   :components ((:file "package")
