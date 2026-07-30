@@ -4,8 +4,10 @@
 
     `cl-log-kit` targets [SBCL](https://www.sbcl.org/) and requires ASDF
     3.3.1 or newer (a modern SBCL already bundles a recent-enough ASDF). The
-    shipped `cl-log-kit` system is dependency-free — no third-party library
-    is loaded at runtime.
+    shipped `cl-log-kit` system also depends on three nerima-lisp toolkit
+    packages — `cl-date-kit`, `cl-concurrent-kit`, and `cl-host-kit` — loaded
+    at runtime; see [Compatibility](compatibility.md) for what each is used
+    for.
 
 Pick the path that matches how you use the library.
 
@@ -64,16 +66,17 @@ Pick the path that matches how you use the library.
     `run-tests.lisp` and `run-coverage.lisp` also work
     without Nix — see [Development](development.md) for the direct
     `CL_SOURCE_REGISTRY` invocation. `cl-log-kit/test` requires `cl-weave`
-    1.0.0 or newer and `cl-json-kit` 1.0.0 or newer; the flake pins both, so
+    1.1.0 or newer and `cl-json-kit` 1.0.1 or newer; the flake pins both, so
     only a hand-managed `CL_SOURCE_REGISTRY` can point at an older checkout.
 
 ## Runtime Support
 
-`cl-log-kit` is developed and tested against SBCL. The library itself has no
-third-party runtime dependencies, so it should load cleanly on any modern
-ASDF 3.3.1+ setup; SBCL is the only implementation the test suite and CI
-pipeline exercise. See [Compatibility](compatibility.md) for the platforms
-the flake builds and the stability promise attached to the exported surface.
+`cl-log-kit` is developed and tested against SBCL, and its runtime
+dependencies (`cl-date-kit`, `cl-concurrent-kit`, `cl-host-kit`) are
+themselves SBCL-only, so it should load cleanly on any modern ASDF 3.3.1+
+SBCL setup; SBCL is the only implementation the test suite and CI pipeline
+exercise. See [Compatibility](compatibility.md) for the platforms the flake
+builds and the stability promise attached to the exported surface.
 
 ## Package and Naming
 

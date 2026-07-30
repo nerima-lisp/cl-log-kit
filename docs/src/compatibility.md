@@ -8,9 +8,10 @@ SBCL only, on the platforms the flake builds: `x86_64-linux` and
 The library uses `sb-thread`, `sb-gray`, `sb-ext`, and `sb-debug` directly
 for its locking, bounded output streams, atomics, and backtrace capture, so
 it is deliberately not portable Common Lisp. The shipped `cl-log-kit` system
-otherwise depends on nothing but ASDF 3.3.1 or newer, so there is no
-third-party library to audit, pin, or break in a consumer's own dependency
-graph.
+otherwise depends on ASDF 3.3.1 or newer and three nerima-lisp toolkit
+packages used directly with no adapter layer: `cl-date-kit` (calendar/zone
+handling), `cl-concurrent-kit` (locking/atomics), and `cl-host-kit`
+(filesystem operations). See `cl-log-kit.asd` for exact version floors.
 
 ## Stability promise
 

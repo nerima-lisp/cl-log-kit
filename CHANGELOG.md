@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boundary everywhere. Pass a custom `:clock` to preserve the previous
   local-time behavior.
 - `cl-weave` test dependency floor raised `1.0.0` → `1.1.0` and `cl-json-kit`
-  `1.0.0` → `1.0.1` (both non-breaking upstream releases).
+  `1.0.0` → `1.0.1` (both non-breaking upstream releases). The `paredit-cli`
+  devShell package moves `v1.0.0` → `v1.3.0`.
 
 ### Added
 
@@ -85,6 +86,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `snapshot.lisp` + `fields.lisp`; `handler-json.lisp` → `handler-json.lisp` +
   `json-encoding.lisp`; `logger.lisp` → `logger.lisp` + `log-context.lisp`;
   `handlers.lisp` → `handlers.lisp` + `simple-handlers.lisp`.
+- `run-coverage.lisp`'s floors move to 94.9% expression / 98.45% branch (from
+  93.85%/98.7%), tracking the new true aggregate of 94.98%/98.51%. Expression
+  coverage rose (dead `sb-thread` call sites removed; the new
+  `document-readers` macro cut sixteen near-duplicate `setf` forms to one
+  invocation each per site). Branch coverage fell slightly: one new branch —
+  `host-kit:pathname-within-p`'s negative case in
+  `rotating-file-handler.lisp`'s `%purge-old-log-files` — is deliberate
+  defensive hardening that cannot be reached through the public API by
+  construction (every file it confines already came from
+  `directory-files`), so forcing it would test a scenario that cannot occur
+  rather than anything real; the other four unchanged branches (in
+  `handler.lisp`, `json-encoding.lisp` ×2, `snapshot.lisp`) moved verbatim in
+  this pass's file splits and lost no test coverage, only denominator.
 
 ### Fixed
 

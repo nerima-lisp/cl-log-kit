@@ -1,10 +1,12 @@
 # cl-log-kit
 
-`cl-log-kit` is a dependency-free, SBCL-only structured logging toolkit for
-Common Lisp, inspired by Go's `log/slog`. It separates immutable log records
-from handlers that serialize them: every built-in handler emits a record
-through exactly one `handle-log-record` method, so there is no way to end up
-with duplicate output paths.
+`cl-log-kit` is an SBCL-only structured logging toolkit for Common Lisp,
+inspired by Go's `log/slog`. It separates immutable log records from
+handlers that serialize them: every built-in handler emits a record through
+exactly one `handle-log-record` method, so there is no way to end up with
+duplicate output paths. It is built on the nerima-lisp toolkit family —
+`cl-date-kit`, `cl-concurrent-kit`, and `cl-host-kit` — used directly, with
+no adapter layer in between.
 
 !!! tip "New to cl-log-kit?"
 

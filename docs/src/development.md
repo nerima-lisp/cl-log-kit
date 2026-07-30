@@ -5,10 +5,12 @@
 Both are load-bearing, and a change that violates either will be asked to
 change rather than to justify itself:
 
-1. **The shipped `cl-log-kit` system has zero runtime dependencies** —
-   nothing but ASDF 3.3.1 or newer and SBCL. `cl-weave` and `cl-json-kit` are
-   used by `cl-log-kit/test` only. A new dependency on the library system is
-   a design change, not a detail.
+1. **The shipped `cl-log-kit` system's runtime dependencies are limited to
+   the nerima-lisp toolkit family** — ASDF 3.3.1+, SBCL, `cl-date-kit`,
+   `cl-concurrent-kit`, and `cl-host-kit`, each used directly with no
+   adapter layer. `cl-weave` and `cl-json-kit` are used by `cl-log-kit/test`
+   only. A dependency from outside that family is a design change, not a
+   detail.
 2. **`handle-log-record` is the only place a handler writes output.** The
    protocol exists to make "this log line was printed twice" structurally
    impossible; a second write path defeats it.

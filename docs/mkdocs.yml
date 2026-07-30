@@ -15,7 +15,7 @@ strict: true
 
 site_name: cl-log-kit
 site_description: >-
-  A dependency-free, SBCL-only structured logging toolkit for Common Lisp.
+  An SBCL-only structured logging toolkit for Common Lisp.
 site_author: cl-log-kit contributors
 site_url: https://nerima-lisp.github.io/cl-log-kit/
 
