@@ -61,13 +61,13 @@
         (t (%write-nonneg-fixnum-digits n stream))))
 
 (defvar *keyword-name-cache-lock*
-  (sb-thread:make-mutex :name "cl-log-kit keyword name cache"))
+  (cl-concurrent-kit:make-lock :name "cl-log-kit keyword name cache"))
 
 (defun %cached-keyword-name (keyword)
   "Return KEYWORD's downcased symbol name, interning it on first use so later
 calls reuse the same string instead of reallocating it."
   (or (gethash keyword **keyword-name-cache**)
-      (sb-thread:with-mutex (*keyword-name-cache-lock*)
+      (cl-concurrent-kit:with-lock-held (*keyword-name-cache-lock*)
         (or (gethash keyword **keyword-name-cache**)
             (let* ((rendered (string-downcase (symbol-name keyword)))
                    (old **keyword-name-cache**)

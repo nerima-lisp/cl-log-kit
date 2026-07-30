@@ -38,15 +38,10 @@ CLOSE-MANAGED-HANDLER outside the lifecycle state that allows it — most
 commonly a handler trying to close itself from inside its own
 HANDLE-LOG-RECORD or FLUSH-HANDLER method, which would deadlock."))
 
-;;; DEFINE-CONDITION's per-slot :DOCUMENTATION only reaches MOP slot
-;;; introspection, not (DOCUMENTATION #'READER 'FUNCTION); set the latter
-;;; explicitly so the reader generic functions answer DOCUMENTATION too.
-(setf (documentation 'handler-lifecycle-error-handler 'function)
-      "The handler the disallowed operation was attempted on.")
-(setf (documentation 'handler-lifecycle-error-operation 'function)
-      "A keyword naming the attempted operation, e.g. :HANDLE, :FLUSH, or :CLOSE.")
-(setf (documentation 'handler-lifecycle-error-state 'function)
-      "The handler's lifecycle state that made OPERATION invalid.")
+(document-readers
+  (handler-lifecycle-error-handler "The handler the disallowed operation was attempted on.")
+  (handler-lifecycle-error-operation "A keyword naming the attempted operation, e.g. :HANDLE, :FLUSH, or :CLOSE.")
+  (handler-lifecycle-error-state "The handler's lifecycle state that made OPERATION invalid."))
 
 ;;; Handlers currently running an admitted operation on the calling thread,
 ;;; so %CALL-CLOSE-ONCE can refuse a handler trying to close itself from
@@ -54,9 +49,9 @@ HANDLE-LOG-RECORD or FLUSH-HANDLER method, which would deadlock."))
 (defvar *active-close-managed-handlers* nil)
 
 (defclass close-managed-handler (handler)
-  ((close-lock :initform (sb-thread:make-mutex :name "cl-log-kit handler close")
+  ((close-lock :initform (cl-concurrent-kit:make-lock :name "cl-log-kit handler close")
               :reader %close-managed-lock)
-   (close-waitqueue :initform (sb-thread:make-waitqueue :name "cl-log-kit handler close")
+   (close-waitqueue :initform (cl-concurrent-kit:make-condition-variable :name "cl-log-kit handler close")
                     :reader %close-managed-waitqueue)
    (close-state :initform :open :accessor %close-managed-state)
    (close-owner :initform nil :accessor %close-managed-owner)
@@ -72,7 +67,7 @@ within FUNCTION is refused instead of deadlocking against itself."
   (let ((entered-p nil))
     (unwind-protect
         (progn
-          (sb-thread:with-mutex ((%close-managed-lock handler))
+          (cl-concurrent-kit:with-lock-held ((%close-managed-lock handler))
             (let ((state (%close-managed-state handler)))
               (unless (eq state :open)
                 (%lifecycle-error handler operation state))
@@ -81,9 +76,9 @@ within FUNCTION is refused instead of deadlocking against itself."
           (let ((*active-close-managed-handlers* (cons handler *active-close-managed-handlers*)))
             (funcall function)))
       (when entered-p
-        (sb-thread:with-mutex ((%close-managed-lock handler))
+        (cl-concurrent-kit:with-lock-held ((%close-managed-lock handler))
           (decf (%close-managed-active-operations handler))
-          (sb-thread:condition-broadcast (%close-managed-waitqueue handler)))))
+          (cl-concurrent-kit:condition-broadcast (%close-managed-waitqueue handler)))))
     handler))
 
 (defun %call-close-once (handler function)
@@ -95,7 +90,7 @@ operation on HANDLER is refused outright."
     (%lifecycle-error handler :close :active-operation))
   (let ((run-close-p nil)
         (thread sb-thread:*current-thread*))
-    (sb-thread:with-mutex ((%close-managed-lock handler))
+    (cl-concurrent-kit:with-lock-held ((%close-managed-lock handler))
       (loop
         (case (%close-managed-state handler)
           (:open
@@ -103,25 +98,25 @@ operation on HANDLER is refused outright."
                  (%close-managed-owner handler) thread
                  run-close-p t)
            (loop while (plusp (%close-managed-active-operations handler))
-                 do (sb-thread:condition-wait (%close-managed-waitqueue handler)
-                                              (%close-managed-lock handler)))
+                 do (cl-concurrent-kit:condition-wait (%close-managed-waitqueue handler)
+                                                      (%close-managed-lock handler)))
            (return))
           (:closed (return))
           (:closing
            (if (eq (%close-managed-owner handler) thread)
                (return)
-               (sb-thread:condition-wait (%close-managed-waitqueue handler)
-                                         (%close-managed-lock handler)))))))
+               (cl-concurrent-kit:condition-wait (%close-managed-waitqueue handler)
+                                                 (%close-managed-lock handler)))))))
     (when run-close-p
       (let ((completed-p nil))
         (unwind-protect
             (progn
               (funcall function)
               (setf completed-p t))
-          (sb-thread:with-mutex ((%close-managed-lock handler))
+          (cl-concurrent-kit:with-lock-held ((%close-managed-lock handler))
             (setf (%close-managed-state handler) (if completed-p :closed :open)
                   (%close-managed-owner handler) nil)
-            (sb-thread:condition-broadcast (%close-managed-waitqueue handler))))))
+            (cl-concurrent-kit:condition-broadcast (%close-managed-waitqueue handler))))))
     handler))
 
 ;;; The three macros below are the managed-handler method DSL: they turn a

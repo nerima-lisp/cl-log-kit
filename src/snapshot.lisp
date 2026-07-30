@@ -63,16 +63,16 @@ as a literal JSON false, distinct from Lisp NIL.")
             (:predicate json-object-p))
   (members nil :type list :read-only t))
 
-(setf (documentation 'json-object-p 'function)
-      "True when VALUE is a JSON object wrapper created by JSON-OBJECT.")
+(document-readers
+  (json-object-p "True when VALUE is a JSON object wrapper created by JSON-OBJECT."))
 
 (defstruct (json-array-value
             (:constructor %make-json-array (elements))
             (:predicate json-array-p))
   (elements #() :type vector :read-only t))
 
-(setf (documentation 'json-array-p 'function)
-      "True when VALUE is a JSON array wrapper created by JSON-ARRAY.")
+(document-readers
+  (json-array-p "True when VALUE is a JSON array wrapper created by JSON-ARRAY."))
 
 (defun %json-object-members (object)
   (json-object-value-members object))
@@ -162,7 +162,7 @@ walk, so a circular list is still rejected as a cycle rather than followed."
       (dolist (cons marked)
         (remhash cons active)))))
 
-(defun %snapshot-field-value (value &optional context (depth (%constant-default 0)))
+(defun-defaulted %snapshot-field-value (value &optional context (depth 0))
   (if (null value)
       nil
       (let ((context (or context *field-snapshot-context* (%make-snapshot-context))))
@@ -204,70 +204,6 @@ walk, so a circular list is still rejected as a cycle rather than followed."
                             value)
                    copy))))
             (t value))))))
-
-(defun %validated-object-members (members)
-  (%bounded-proper-list-length members +max-log-field-array-elements+ :array-elements
-                               "JSON object members must be a finite proper alist")
-  (let ((*field-snapshot-context* (%make-snapshot-context))
-        (seen (make-hash-table :test #'equal))
-        (result nil))
-    (dolist (pair members (nreverse result))
-      (unless (consp pair)
-        (%invalid-fields members "each JSON object member must be a cons pair"))
-      (let ((key (car pair)))
-        (%validate-field-key key members)
-        (%check-duplicate-canonical-key (%canonical-field-name key) seen members
-                                        "duplicate canonical JSON object member")
-        (push (%copy-field-pair pair) result)))))
-
-(defun json-object (members)
-  "Wrap MEMBERS — an alist of (KEY . VALUE) cons pairs with symbol or string
-keys and no duplicate canonical key — as a JSON object field value. Signals
-INVALID-LOG-FIELDS on a malformed member or a duplicate canonical key."
-  (%make-json-object (%validated-object-members members)))
-
-(defun json-array (elements)
-  "Wrap ELEMENTS — a proper list or vector — as a JSON array field value.
-Every element is defensively snapshotted the same way a plain field value
-is."
-  (if (vectorp elements)
-      (%check-snapshot-size :array-elements (length elements) +max-log-field-array-elements+)
-      (%bounded-proper-list-length elements +max-log-field-array-elements+ :array-elements
-                                   "JSON array elements must be a finite proper list or vector"))
-  (let ((*field-snapshot-context* (%make-snapshot-context)))
-    (%make-json-array (map 'vector #'%snapshot-field-value elements))))
-
-(defun json-object-members (object)
-  "Return a fresh copy of OBJECT's (KEY . VALUE) member alist."
-  (check-type object json-object-value)
-  (let ((*field-snapshot-context* (%make-snapshot-context)))
-    (mapcar #'%copy-field-pair (%json-object-members object))))
-
-(defun json-array-elements (array)
-  "Return a fresh copy of ARRAY's element vector."
-  (check-type array json-array-value)
-  (let ((*field-snapshot-context* (%make-snapshot-context)))
-    (map 'vector #'%snapshot-field-value (%json-array-elements array))))
-
-(defun plist-to-alist (plist)
-  "Convert PLIST (a property list of field key/value pairs) to a canonical
-alist: keys are validated and defensively copied, values are recursively
-snapshotted, and only the first pair for each canonical key is kept."
-  (%bounded-proper-list-length plist (* 2 +max-log-field-array-elements+) :array-elements
-                               "field plist must be a finite proper list")
-  (let ((*field-snapshot-context* (%make-snapshot-context))
-        (seen (make-hash-table :test #'equal))
-        (result nil))
-    (loop for tail on plist by #'cddr
-          do (when (null (cdr tail))
-               (%invalid-fields plist "field plist must contain an even number of elements"))
-             (let* ((key (car tail))
-                    (value (cadr tail)))
-               (%validate-field-key key plist)
-               (%check-duplicate-canonical-key (%canonical-field-name key) seen plist
-                                               "duplicate canonical field name")
-               (push (cons (%copy-field-key key) (%snapshot-field-value value)) result))
-          finally (return (nreverse result)))))
 
 (defun %copy-field-alist (fields)
   (let ((*field-snapshot-context* (%make-snapshot-context)))

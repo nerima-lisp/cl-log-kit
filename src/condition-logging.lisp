@@ -28,8 +28,8 @@
     (vector-push-extend character buffer)
     character))
 
-(defmethod sb-gray:stream-write-string ((stream %bounded-character-output-stream) string
-                                        &optional (start (%constant-default 0)) end)
+(defmethod-defaulted sb-gray:stream-write-string
+    ((stream %bounded-character-output-stream) string &optional (start 0) end)
   (let ((end (or end (length string)))
         (buffer (%bounded-output-buffer stream)))
     (loop for index from start below end
@@ -62,8 +62,8 @@ LIMIT, returning the captured string. See %CALL-WITH-BOUNDED-OUTPUT."
   (%bounded-string (format nil "<condition ~A>" (string-downcase (string (type-of condition))))
                    limit))
 
-(defun %safe-condition-message (condition limit &key (render-report (%constant-default nil))
-                                (resource (%constant-default :condition-message-length)))
+(defun-defaulted %safe-condition-message (condition limit &key (render-report nil)
+                                          (resource :condition-message-length))
   (check-type condition condition)
   (check-type render-report boolean)
   (%check-condition-output-limit resource limit)
@@ -106,10 +106,10 @@ truncated as-is, any other object is rendered like a condition message."
                                                   backtrace-limit)))))
     fields))
 
-(defun condition-fields (condition &key backtrace (capture-backtrace (%constant-default nil))
-                         (render-report (%constant-default nil))
-                         (message-limit (%constant-default 2048))
-                         (backtrace-limit (%constant-default 8192)))
+(defun-defaulted condition-fields (condition &key backtrace (capture-backtrace nil)
+                                   (render-report nil)
+                                   (message-limit 2048)
+                                   (backtrace-limit 8192))
   "Return a fields plist describing CONDITION: :CONDITION-TYPE, always; a
 bounded :CONDITION-MESSAGE only when RENDER-REPORT is true (otherwise just
 the type name, to avoid running an untrusted REPORT method by default);

@@ -1,19 +1,16 @@
 ;;;; src/conditions.lisp
 ;;;
-;;; The error hierarchy (LOG-KIT-ERROR and its subclasses) plus the resource
-;;; limits and the guards that raise them. Every other file signals through
-;;; these, so this layer has no dependencies of its own.
+;;; The error hierarchy: LOG-KIT-ERROR and its subclasses. Every other file
+;;; signals through these, so this layer has no dependencies of its own.
+;;; Resource-limit constants and guards live in limits.lisp; macro-authoring
+;;; utilities (CHECK-TYPES, DEFUN-DEFAULTED, DEFMETHOD-DEFAULTED) live in
+;;; macro-utils.lisp.
 (in-package #:log-kit)
 
 (defun %write-condition-value (value stream)
   (typecase value
     ((or null number character string symbol) (write value :stream stream :escape t))
     (t (write-string "#<unprintable value>" stream))))
-
-(defconstant +max-log-field-depth+ 64)
-(defconstant +max-log-field-nodes+ 65536)
-(defconstant +max-log-field-string-length+ 1048576)
-(defconstant +max-log-field-array-elements+ 16384)
 
 (define-condition log-kit-error (error) ()
   (:documentation "Base condition for every error this library itself signals."))
@@ -38,13 +35,9 @@
 malformed plist, a non-symbol/non-string key, a duplicate canonical key, or
 a JSON object/array member that fails its own shape check."))
 
-;;; DEFINE-CONDITION's per-slot :DOCUMENTATION only reaches MOP slot
-;;; introspection, not (DOCUMENTATION #'READER 'FUNCTION); set the latter
-;;; explicitly so the reader generic functions answer DOCUMENTATION too.
-(setf (documentation 'invalid-log-fields-value 'function)
-      "The malformed field value or collection that was rejected.")
-(setf (documentation 'invalid-log-fields-reason 'function)
-      "A human-readable string explaining why VALUE was rejected.")
+(document-readers
+  (invalid-log-fields-value "The malformed field value or collection that was rejected.")
+  (invalid-log-fields-reason "A human-readable string explaining why VALUE was rejected."))
 
 (define-condition unsupported-json-value (log-kit-error)
   ((value :initarg :value :reader unsupported-json-value-value
@@ -59,10 +52,9 @@ a JSON object/array member that fails its own shape check."))
 valid JSON representation: a non-finite float, a Unicode surrogate code
 point in a string, or an object of a type the encoder does not support."))
 
-(setf (documentation 'unsupported-json-value-value 'function)
-      "The value the JSON encoder could not represent.")
-(setf (documentation 'unsupported-json-value-reason 'function)
-      "A human-readable string explaining why VALUE was rejected.")
+(document-readers
+  (unsupported-json-value-value "The value the JSON encoder could not represent.")
+  (unsupported-json-value-reason "A human-readable string explaining why VALUE was rejected."))
 
 (defun %proper-list-p (value)
   "True when VALUE is a finite, nil-terminated list. Uses Floyd's tortoise and
@@ -99,63 +91,8 @@ hare so a circular list is rejected in bounded time instead of looping forever."
 length, or collection size exceeds its configured bound, so a hostile or
 accidentally huge value can never exhaust memory or loop unboundedly."))
 
-(setf (documentation 'log-resource-limit-resource 'function)
-      "A keyword naming the bounded resource, e.g. :DEPTH, :NODES,
+(document-readers
+  (log-resource-limit-resource "A keyword naming the bounded resource, e.g. :DEPTH, :NODES,
 :STRING-LENGTH, or :ARRAY-ELEMENTS.")
-(setf (documentation 'log-resource-limit-limit 'function)
-      "The configured maximum for RESOURCE.")
-(setf (documentation 'log-resource-limit-actual 'function)
-      "The value that exceeded LIMIT.")
-
-(defun %resource-limit-exceeded (resource limit actual)
-  (error 'log-resource-limit-exceeded :resource resource :limit limit :actual actual))
-
-(defun %check-snapshot-size (resource actual limit)
-  (when (> actual limit)
-    (%resource-limit-exceeded resource limit actual)))
-
-(defun %check-field-string-length (string)
-  "Signal LOG-RESOURCE-LIMIT-EXCEEDED when STRING exceeds the field
-string-length bound. The single place that bound is applied, so record,
-logger, and snapshot code state the intent instead of repeating the resource
-keyword and constant."
-  (%check-snapshot-size :string-length (length string) +max-log-field-string-length+))
-
-(defun %bounded-proper-list-length (value limit resource reason)
-  "The length of VALUE, bounded by LIMIT and cycle-checked in one pass, so a
-caller never has to fully traverse a hostile or circular list to reject it."
-  (loop with tail = value
-        with slow = value
-        with fast = value
-        for count from 0
-        do (cond
-             ((null tail) (return count))
-             ((atom tail) (%invalid-fields value reason)))
-           (when (= count limit)
-             (%resource-limit-exceeded resource limit (1+ limit)))
-           (setf tail (cdr tail))
-           (if (and (consp fast) (consp (cdr fast)))
-               (progn
-                 (setf slow (cdr slow)
-                       fast (cddr fast))
-                 (when (eq slow fast)
-                   (%invalid-fields value reason)))
-               (setf fast nil))))
-
-(defmacro check-types (&body clauses)
-  "Run CHECK-TYPE on each (VALUE TYPE) pair in CLAUSES, in argument order,
-so a constructor stating several CHECK-TYPE guards writes the value/type
-table once instead of one CHECK-TYPE form per line."
-  `(progn ,@(loop for (value type) in clauses collect `(check-type ,value ,type))))
-
-(defun %constant-default (value)
-  "Return VALUE unchanged. Used as a &KEY/&OPTIONAL default-value form in
-place of a bare literal or DEFCONSTANT reference: SBCL constant-folds a
-literal default at every call site that omits the keyword, so the source
-position of the default form itself is never re-evaluated at runtime and
-sb-cover reports it \"not executed\" even when the omitted-keyword path is
-exercised. A default of (%CONSTANT-DEFAULT literal) is an ordinary,
-non-inlined function call SBCL cannot fold away, so sb-cover credits it the
-same way it credits any other executed form — the same tradeoff already
-made project-wide when the DECLAIM INLINE on LEVEL</LEVEL<= was removed."
-  value)
+  (log-resource-limit-limit "The configured maximum for RESOURCE.")
+  (log-resource-limit-actual "The value that exceeded LIMIT."))

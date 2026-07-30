@@ -1,7 +1,7 @@
 ;;;; src/rotating-file-handler.lisp
 ;;;
 ;;; ROTATING-FILE-HANDLER: a file-backed handler that opens a fresh dated
-;;; file whenever an injectable clock's "bucket" (by default the local
+;;; file whenever an injectable clock's "bucket" (by default today's UTC
 ;;; calendar date) changes, and prunes rotated files beyond a retention
 ;;; count — the same role Monolog's RotatingFileHandler plays. Delegates
 ;;; every write to a plain TEXT-HANDLER/JSON-HANDLER it owns and swaps out on
@@ -11,14 +11,14 @@
 (in-package #:log-kit)
 
 (defun %current-log-rotation-date ()
-  "The default rotation clock: today's local date as a zero-padded
-YYYY-MM-DD string. A custom clock must also return values that sort
+  "The default rotation clock: today's UTC date as a zero-padded YYYY-MM-DD
+string. UTC, not the host's local time zone, so a fleet spread across zones
+(or simply misconfigured on one host) rotates on the same boundary
+everywhere; a custom clock must also return values that sort
 lexicographically in the same order as chronological order, since ordering
 rotated files for retention purposes uses a plain string comparison."
-  (multiple-value-bind (second minute hour day month year)
-      (decode-universal-time (get-universal-time))
-    (declare (ignore second minute hour))
-    (format nil "~4,'0D-~2,'0D-~2,'0D" year month day)))
+  (cl-date-kit:format-local-date
+   (cl-date-kit:local-date-of-instant (cl-date-kit:instant-now) (cl-date-kit:zone-offset-utc))))
 
 (defclass rotating-file-handler (close-managed-handler)
   ((base-pathname :initarg :base-pathname :reader %rotating-handler-base-pathname)
@@ -26,29 +26,30 @@ rotated files for retention purposes uses a plain string comparison."
    (wire-format :initarg :wire-format :initform :text :reader %rotating-handler-wire-format)
    (auto-flush :initarg :auto-flush :initform t :reader %rotating-handler-auto-flush-p)
    (clock :initarg :clock :initform #'%current-log-rotation-date :reader %rotating-handler-clock)
-   (lock :initform (sb-thread:make-mutex :name "cl-log-kit rotating-file-handler")
+   (lock :initform (cl-concurrent-kit:make-lock :name "cl-log-kit rotating-file-handler")
         :reader %rotating-handler-lock)
    (inner :initform nil :accessor %rotating-handler-inner)
    (current-bucket :initform nil :accessor %rotating-handler-current-bucket))
   (:documentation "Writes to a file derived from a base pathname and a
-clock's current \"bucket\" (by default today's date), opening a fresh file
-and pruning old ones when the bucket changes. See MAKE-ROTATING-FILE-HANDLER."))
+clock's current \"bucket\" (by default today's UTC date), opening a fresh
+file and pruning old ones when the bucket changes. See
+MAKE-ROTATING-FILE-HANDLER."))
 
-(defmethod initialize-instance :after ((instance rotating-file-handler) &key base-pathname
-                                       (max-files (%constant-default 0))
-                                       (wire-format (%constant-default :text))
-                                       (auto-flush (%constant-default t))
-                                       (clock (%constant-default #'%current-log-rotation-date)))
+(defmethod-defaulted initialize-instance :after ((instance rotating-file-handler) &key base-pathname
+                                                  (max-files 0)
+                                                  (wire-format :text)
+                                                  (auto-flush t)
+                                                  (clock #'%current-log-rotation-date))
   (check-types (base-pathname (or string pathname)) (max-files (integer 0 *)) (clock function))
   (unless (member wire-format '(:text :json))
     (error 'type-error :datum wire-format :expected-type '(member :text :json)))
   (%check-boolean-initarg auto-flush)
   (setf (slot-value instance 'base-pathname) (pathname base-pathname)))
 
-(defun make-rotating-file-handler (base-pathname &key (max-files (%constant-default 0))
-                                   (wire-format (%constant-default :text))
-                                   (auto-flush (%constant-default t))
-                                   (clock (%constant-default #'%current-log-rotation-date)))
+(defun-defaulted make-rotating-file-handler (base-pathname &key (max-files 0)
+                                             (wire-format :text)
+                                             (auto-flush t)
+                                             (clock #'%current-log-rotation-date))
   "Build a handler that writes to a file derived from BASE-PATHNAME (a
 pathname or namestring) and CLOCK's current bucket, e.g. BASE-PATHNAME
 \"app.log\" and bucket \"2026-07-25\" writes to \"app-2026-07-25.log\".
@@ -68,24 +69,23 @@ rotated files (including the current one) are kept, oldest deleted first;
   (make-pathname :name (format nil "~A-~A" (pathname-name base-pathname) bucket)
                  :defaults base-pathname))
 
-(defun %rotated-log-glob (base-pathname)
-  "A wild pathname matching every rotated file for BASE-PATHNAME. Built by
-parsing a namestring rather than MAKE-PATHNAME: MAKE-PATHNAME treats a `*`
-inside a plain :NAME string as a literal character to match, not a wildcard
-marker, so it cannot produce a wild pathname component on its own.
+(defun %rotated-log-directory (base-pathname)
+  "The directory rotated files for BASE-PATHNAME live in."
+  (make-pathname :name nil :type nil :defaults base-pathname))
 
-The type is appended only when BASE-PATHNAME actually has one. An
-extension-less base — \"app\", \"/var/log/myapp\" — is an ordinary thing to
-pass, and %ROTATED-LOG-PATHNAME writes its rotated files with no type at all
-(\"app-2026-07-25\"); interpolating a NIL type here instead produced the glob
-\"app-*.NIL\", which matches nothing, so :MAX-FILES silently retained every
-file forever. The glob has to describe the same shape the writer produces."
-  (let ((name (pathname-name base-pathname))
-        (type (pathname-type base-pathname)))
-    (merge-pathnames (if type
-                         (format nil "~A-*.~A" name type)
-                         (format nil "~A-*" name))
-                     (make-pathname :name nil :type nil :defaults base-pathname))))
+(defun %rotated-log-file-p (base-pathname pathname)
+  "True when PATHNAME looks like a file %ROTATED-LOG-PATHNAME would have
+written for BASE-PATHNAME: the same name prefix and, when BASE-PATHNAME has
+one, the same type.
+
+The type comparison only requires equality, not presence. An extension-less
+base — \"app\", \"/var/log/myapp\" — is an ordinary thing to pass, and
+%ROTATED-LOG-PATHNAME writes its rotated files with no type at all
+(\"app-2026-07-25\"); requiring a NIL type to match too is what keeps that
+shape recognized instead of matching every file in the directory, or none."
+  (and (host-kit:string-prefix-p (format nil "~A-" (pathname-name base-pathname))
+                                 (or (pathname-name pathname) ""))
+       (equal (pathname-type base-pathname) (pathname-type pathname))))
 
 (defun %open-rotation-stream-handler (wire-format pathname auto-flush)
   (let ((stream (open pathname :direction :output :if-exists :append :if-does-not-exist :create
@@ -100,13 +100,21 @@ first. A no-op when MAX-FILES is 0 (unlimited retention). Must be called
 with HANDLER's lock held."
   (let ((max-files (%rotating-handler-max-files handler)))
     (when (plusp max-files)
-      (let* ((pattern (%rotated-log-glob (%rotating-handler-base-pathname handler)))
-             (files (sort (directory pattern) #'string> :key #'namestring)))
+      (let* ((base-pathname (%rotating-handler-base-pathname handler))
+             (directory (%rotated-log-directory base-pathname))
+             (files (sort (remove-if-not (lambda (file) (%rotated-log-file-p base-pathname file))
+                                         (host-kit:directory-files directory))
+                         #'string> :key #'namestring)))
         (dolist (file (nthcdr max-files files))
-          (ignore-errors (delete-file file)))))))
+          ;; Confined again immediately before the delete, not just implied
+          ;; by having come from DIRECTORY-FILES: the check is what a hostile
+          ;; or surprising BASE-PATHNAME (a symlinked log directory, say)
+          ;; cannot bypass merely by changing what DIRECTORY-FILES returned.
+          (when (host-kit:pathname-within-p file directory)
+            (host-kit:delete-file-if-exists file)))))))
 
 (defun %call-with-rotating-handler-lock (handler thunk)
-  (sb-thread:with-mutex ((%rotating-handler-lock handler))
+  (cl-concurrent-kit:with-lock-held ((%rotating-handler-lock handler))
     (funcall thunk)))
 
 (defmacro with-rotating-handler-lock ((handler) &body body)

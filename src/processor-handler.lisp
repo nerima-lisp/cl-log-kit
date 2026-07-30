@@ -14,15 +14,15 @@
   (:documentation "Runs each record through a chain of enrichment functions
 before forwarding it to TARGET. See MAKE-PROCESSOR-HANDLER."))
 
-(defmethod initialize-instance :after ((instance processor-handler) &key target
-                                       (processors (%constant-default nil)))
+(defmethod-defaulted initialize-instance :after ((instance processor-handler) &key target
+                                                  (processors nil))
   (check-type target handler)
   (unless (%proper-list-p processors)
     (%invalid-fields processors "processor collection must be a finite proper list"))
   (dolist (processor processors) (check-type processor function))
   (setf (slot-value instance 'processors) (copy-list processors)))
 
-(defun make-processor-handler (target &key (processors (%constant-default nil)))
+(defun-defaulted make-processor-handler (target &key (processors nil))
   "Build a handler that runs RECORD through each of PROCESSORS, in order,
 before forwarding it to TARGET. Each processor is a function of one argument
 (the record so far) returning a fields plist of data to merge in, or NIL to

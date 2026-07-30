@@ -7,11 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-31
+
+### BREAKING
+
+- **The zero-runtime-dependency guarantee is dropped.** `cl-log-kit` now
+  depends on three nerima-lisp packages, used directly with no adapter layer:
+  [`cl-date-kit`](https://github.com/nerima-lisp/cl-date-kit) (calendar/zone
+  handling), [`cl-concurrent-kit`](https://github.com/nerima-lisp/cl-concurrent-kit)
+  (locks, condition variables, atomic counters), and
+  [`cl-host-kit`](https://github.com/nerima-lisp/cl-host-kit) (filesystem
+  operations). Two candidates were evaluated and rejected: `cl-boundary-kit`
+  solves the opposite problem (mocking a logger's *consumer*, not implementing
+  a sink), and `cl-json-kit`'s writer is not zero-allocation and uses its own
+  value model, so it stays a test-only round-trip oracle rather than the
+  runtime `json-handler`'s writer.
+- `rotating-file-handler`'s default rotation clock now buckets by **UTC**
+  date, not the host's local time zone. A fleet spread across zones (or a
+  single host with a misconfigured local zone) now rotates on the same
+  boundary everywhere. Pass a custom `:clock` to preserve the previous
+  local-time behavior.
+- `cl-weave` test dependency floor raised `1.0.0` → `1.1.0` and `cl-json-kit`
+  `1.0.0` → `1.0.1` (both non-breaking upstream releases).
+
 ### Added
+
+- `defun-defaulted`/`defmethod-defaulted`: internal macros that wrap an
+  `&optional`/`&key` default-value form in `%constant-default` automatically,
+  replacing roughly fifty hand-written wrapper call sites across `logger.lisp`,
+  `record.lisp`, `buffered-handler.lisp`, `rotating-file-handler.lisp`,
+  `processor-handler.lisp`, `condition-logging.lisp`, `handlers.lisp`,
+  `convenience.lisp`, and `snapshot.lisp` with one structurally-generated
+  idiom.
+- `with-buffered-handler-lock`/`%call-with-buffered-handler-lock`: a CPS lock
+  pair for `buffered-handler`, matching the pattern already used by
+  `rotating-file-handler`.
+- `document-readers`: a macro consolidating the 16 identical
+  `(setf (documentation 'reader 'function) "...")` forms scattered across
+  `conditions.lisp`, `lifecycle.lisp`, `logger.lisp`, `snapshot.lisp`, and
+  `thread-context.lisp` (needed because `define-condition`/`defstruct`'s
+  per-slot `:documentation` only reaches MOP slot introspection, not
+  `(documentation #'reader 'function)`).
+- Test coverage for all ten `log-<level>`/`log-default-<level>` macros
+  `define-log-level-macros` generates (previously only three of ten were
+  exercised by name in the suite), and for the previously-untested
+  `handler-lifecycle-error-handler` reader.
 
 ### Changed
 
+- `%stream-state`'s three independent `closing-p`/`closed-p`/`close-pending-p`
+  booleans are now one `close-state` slot with four values (`:open`,
+  `:close-pending`, `:closing`, `:closed`), matching the states as they
+  actually are — mutually exclusive, not three independent flags.
+  `%stream-state-closing-p`/`-closed-p`/`-close-pending-p` remain the exact
+  predicates every caller already used; only their storage changed.
+- Every hand-rolled `sb-thread` mutex/waitqueue in `handler.lisp`,
+  `lifecycle.lisp`, `buffered-handler.lisp`, `rotating-file-handler.lisp`,
+  `simple-handlers.lisp`, and `encoding.lisp`'s keyword-name cache now sits on
+  `cl-concurrent-kit:make-lock`/`with-lock-held`/`make-condition-variable`.
+  The four-state close-state-machine, admit/release counting, and the
+  weak-table stream registry stay hand-written on top — no upstream
+  equivalent exists for any of them. `span.lisp`'s span-id counter now uses
+  `cl-concurrent-kit:make-atomic-counter`/`atomic-counter-incf` in place of a
+  hand-rolled `sb-ext:atomic-incf` struct slot (same underlying technique).
+  `rotating-file-handler.lisp`'s file listing/pruning now composes
+  `host-kit:directory-files` + a prefix/suffix filter (no glob helper exists
+  upstream) with `host-kit:pathname-within-p` confinement and
+  `host-kit:delete-file-if-exists`, in place of a hand-rolled `directory`
+  wildcard and `(ignore-errors (delete-file ...))`.
+- `flake.nix` rewritten on `cl-nix-forge`'s `mkPackageFlake`, matching the
+  shape `cl-weave` and `cl-json-kit` already converged on, in place of a
+  hand-rolled `pkgs.sbcl.buildASDFSystem` + manual `CL_SOURCE_REGISTRY`
+  string.
+- Several `src/` files split for readability, with no behavior change:
+  `handler.lisp` → `handler.lisp` + `stream-state.lisp`; `conditions.lisp` →
+  `conditions.lisp` + `limits.lisp` + `macro-utils.lisp`; `snapshot.lisp` →
+  `snapshot.lisp` + `fields.lisp`; `handler-json.lisp` → `handler-json.lisp` +
+  `json-encoding.lisp`; `logger.lisp` → `logger.lisp` + `log-context.lisp`;
+  `handlers.lisp` → `handlers.lisp` + `simple-handlers.lisp`.
+
 ### Fixed
+
+- `CHANGELOG.md` no longer claims `nix flake check` enforces timeouts via
+  `cl-process-kit`, which appears nowhere in `flake.nix` or `cl-log-kit.asd`;
+  it documents the shell `timeout 120` guard `flake.nix` actually uses.
 
 ## [1.0.0] - 2026-07-26
 
@@ -268,15 +347,13 @@ version and a documented migration path.
   (`defconstant`, `defclass`/`defstruct` slot lists, `defpackage` export
   lists, docstrings) or a `defmacro` body, which runs at macroexpansion time
   and is invisible to `sb-cover`'s runtime instrumentation by construction.
-- `nix flake check` runs the same suite a contributor runs locally, with
-  timeout enforcement via
-  [`cl-process-kit`](https://github.com/nerima-lisp/cl-process-kit) rather
-  than a shell `timeout` a caller has to remember. Every CI job carries a
-  `timeout-minutes` bound.
+- `nix flake check` runs the same suite a contributor runs locally, wrapped
+  in a shell `timeout 120` guard so a reintroduced lifecycle deadlock fails
+  the build instead of hanging it. Every CI job carries a `timeout-minutes`
+  bound.
 - The shipped `cl-log-kit` system depends on nothing but ASDF ≥ 3.3.1 and
-  SBCL. `cl-weave`, `cl-json-kit`, and `cl-process-kit` are test- and
-  dev-only, and the flake pins each to the tag matching the `.asd`'s own
-  version floor.
+  SBCL. `cl-weave` and `cl-json-kit` are test-only, and the flake pins each
+  to the tag matching the `.asd`'s own version floor.
 - A full MkDocs (Material) documentation site, built `--strict` inside the
   Nix sandbox so a broken link or unlisted page fails the build.
 

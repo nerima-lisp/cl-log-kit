@@ -10,9 +10,6 @@
 ;;; both wrong (it is not a plist) and wasted work.
 (defvar *logger-fields-are-snapshot* nil)
 
-(defvar *log-context-fields* nil
-  "Dynamically scoped field snapshot used by WITH-LOG-CONTEXT.")
-
 (defun %unix-time ()
   (- (get-universal-time) 2208988800))
 
@@ -28,16 +25,11 @@
 this logger emits."))
   (:documentation "Logging configuration and immutable contextual fields."))
 
-;;; DEFCLASS's per-slot :DOCUMENTATION only reaches MOP slot introspection,
-;;; not (DOCUMENTATION #'READER 'FUNCTION); set the latter explicitly so the
-;;; reader generic functions answer DOCUMENTATION too.
-(setf (documentation 'logger-handler 'function)
-      "The handler every log call on this logger emits through.")
-(setf (documentation 'logger-level 'function)
-      "The minimum level rank this logger emits; see LOG-ENABLED-P.")
-(setf (documentation 'logger-clock 'function)
-      "A zero-argument function returning the timestamp for records this
-logger emits.")
+(document-readers
+  (logger-handler "The handler every log call on this logger emits through.")
+  (logger-level "The minimum level rank this logger emits; see LOG-ENABLED-P.")
+  (logger-clock "A zero-argument function returning the timestamp for records this
+logger emits."))
 
 (defun %validate-logger-initargs (initargs)
   (unless (%proper-list-p initargs)
@@ -47,12 +39,12 @@ logger emits.")
         unless (member key '(:name :handler :level :fields :clock) :test #'eq)
           do (error 'program-error)))
 
-(defmethod initialize-instance :around ((instance logger) &rest initargs
-                                        &key (name (%constant-default "root"))
-                                        (handler (%constant-default (make-instance 'text-handler)))
-                                        (level (%constant-default +level-info+))
-                                        (fields (%constant-default nil))
-                                        (clock (%constant-default #'%unix-time)))
+(defmethod-defaulted initialize-instance :around ((instance logger) &rest initargs
+                                                   &key (name "root")
+                                                   (handler (make-instance 'text-handler))
+                                                   (level +level-info+)
+                                                   (fields nil)
+                                                   (clock #'%unix-time))
   (%validate-logger-initargs initargs)
   (check-types (name string) (handler handler) (level integer) (clock function))
   (%check-field-string-length name)
@@ -68,11 +60,11 @@ logger emits.")
   "A fresh, recursively copied alist of LOGGER's contextual fields."
   (%copy-field-alist (%logger-fields logger)))
 
-(defun make-logger (&key (name (%constant-default "root"))
-                    (handler (%constant-default (make-instance 'text-handler)))
-                    (level (%constant-default +level-info+))
-                    (fields (%constant-default nil))
-                    (clock (%constant-default #'%unix-time)))
+(defun-defaulted make-logger (&key (name "root")
+                              (handler (make-instance 'text-handler))
+                              (level +level-info+)
+                              (fields nil)
+                              (clock #'%unix-time))
   "Build a LOGGER named NAME (default \"root\"), emitting through HANDLER
 (default a fresh TEXT-HANDLER on *STANDARD-OUTPUT*) at or above LEVEL
 (default +LEVEL-INFO+), with contextual FIELDS (a plist) attached to every
@@ -83,20 +75,6 @@ record it emits, timestamped by CLOCK (default Unix seconds)."
   (let ((*logger-fields-are-snapshot* t))
     (make-instance 'logger :name name :handler handler :level level :fields fields :clock clock)))
 
-(defun %merge-field-alists (overrides base)
-  "Merge two field alists, keeping the first entry seen for each canonical
-key: every pair in OVERRIDES, then every pair in BASE whose key OVERRIDES
-did not already claim."
-  (let ((seen (make-hash-table :test #'equal))
-        (result nil))
-    (dolist (pair overrides)
-      (setf (gethash (%canonical-field-name (car pair)) seen) t)
-      (push (cons (car pair) (cdr pair)) result))
-    (dolist (pair base)
-      (unless (gethash (%canonical-field-name (car pair)) seen)
-        (push (cons (car pair) (cdr pair)) result)))
-    (nreverse result)))
-
 (defun logger-with (logger &rest fields)
   "Return a new logger like LOGGER but with FIELDS (a plist) merged over its
 existing contextual fields, call-site fields winning at the same canonical
@@ -106,11 +84,11 @@ key. LOGGER itself is unchanged."
                               (%merge-field-alists (plist-to-alist fields) (%logger-fields logger))
                               (logger-clock logger)))
 
-(defun derive-logger (logger &key (name (%constant-default nil) name-p)
-                      (handler (%constant-default nil) handler-p)
-                      (level (%constant-default nil) level-p)
-                      (fields (%constant-default nil) fields-p)
-                      (clock (%constant-default nil) clock-p))
+(defun-defaulted derive-logger (logger &key (name nil name-p)
+                                (handler nil handler-p)
+                                (level nil level-p)
+                                (fields nil fields-p)
+                                (clock nil clock-p))
   "Return a new logger like LOGGER, with each supplied keyword argument
 overriding the corresponding slot; an omitted keyword keeps LOGGER's
 existing value. FIELDS, when supplied, is merged over LOGGER's fields
@@ -149,14 +127,6 @@ neither start, end with, nor contain a run of \".\"."
     (%check-snapshot-size :string-length combined-name-length +max-log-field-string-length+)
     (derive-logger logger :name (concatenate 'string (%logger-name logger) "." child-name)
                           :fields fields)))
-
-(defmacro with-log-context ((&rest fields) &body body)
-  "Run BODY with FIELDS merged onto the dynamically scoped log context, so
-every log call made anywhere in BODY (not just calls with LOGGER directly in
-scope) picks them up until BODY returns."
-  `(let ((*log-context-fields* (%merge-field-alists (plist-to-alist (list ,@fields))
-                                                     *log-context-fields*)))
-     ,@body))
 
 (defvar *default-logger* (make-logger)
   "The dynamically scoped logger used by LOG-DEFAULT-* convenience macros.")

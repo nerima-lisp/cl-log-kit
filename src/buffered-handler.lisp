@@ -14,7 +14,7 @@
                   :reader %buffered-handler-trigger-level)
    (buffer-size :initarg :buffer-size :initform 0 :reader %buffered-handler-buffer-size)
    (stop-buffering :initarg :stop-buffering :initform t :reader %buffered-handler-stop-buffering-p)
-   (lock :initform (sb-thread:make-mutex :name "cl-log-kit buffered-handler")
+   (lock :initform (cl-concurrent-kit:make-lock :name "cl-log-kit buffered-handler")
          :reader %buffered-handler-lock)
    (buffer :initform nil :accessor %buffered-handler-buffer)
    (buffer-count :initform 0 :accessor %buffered-handler-buffer-count)
@@ -23,17 +23,17 @@
 TRIGGER-LEVEL arrives, then forwards the whole held-back run in order. See
 MAKE-BUFFERED-HANDLER."))
 
-(defmethod initialize-instance :after ((instance buffered-handler) &key target
-                                       (trigger-level (%constant-default +level-error+))
-                                       (buffer-size (%constant-default 0))
-                                       (stop-buffering (%constant-default t)))
+(defmethod-defaulted initialize-instance :after ((instance buffered-handler) &key target
+                                                  (trigger-level +level-error+)
+                                                  (buffer-size 0)
+                                                  (stop-buffering t))
   (declare (ignore instance))
   (check-types (target handler) (trigger-level integer) (buffer-size (integer 0 *)))
   (%check-boolean-initarg stop-buffering))
 
-(defun make-buffered-handler (target &key (trigger-level (%constant-default +level-error+))
-                              (buffer-size (%constant-default 0))
-                              (stop-buffering (%constant-default t)))
+(defun-defaulted make-buffered-handler (target &key (trigger-level +level-error+)
+                                        (buffer-size 0)
+                                        (stop-buffering t))
   "Build a handler that holds records back from TARGET until one at or above
 TRIGGER-LEVEL (default +LEVEL-ERROR+) arrives, then forwards every held
 record, oldest first, followed by the triggering one. BUFFER-SIZE bounds how
@@ -66,8 +66,19 @@ empty the buffer. Must be called with HANDLER's lock held."
   (setf (%buffered-handler-buffer handler) nil
         (%buffered-handler-buffer-count handler) 0))
 
+(defun %call-with-buffered-handler-lock (handler thunk)
+  (cl-concurrent-kit:with-lock-held ((%buffered-handler-lock handler))
+    (funcall thunk)))
+
+(defmacro with-buffered-handler-lock ((handler) &body body)
+  "Run BODY with HANDLER's buffer lock held, serializing hold/release/flush
+against each other. Wraps %CALL-WITH-BUFFERED-HANDLER-LOCK the way
+WITH-ROTATING-HANDLER-LOCK wraps its own CPS helper, so DEFHANDLE below
+states the lock once instead of the raw WITH-MUTEX form."
+  `(%call-with-buffered-handler-lock ,handler (lambda () ,@body)))
+
 (defhandle buffered-handler (handler record)
-  (sb-thread:with-mutex ((%buffered-handler-lock handler))
+  (with-buffered-handler-lock (handler)
     (cond
       ((%buffered-handler-activated-p handler)
        (handle-log-record (%buffered-handler-target handler) record))

@@ -4,13 +4,17 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-MkDocs%20Material-0a7a5a)](https://nerima-lisp.github.io/cl-log-kit/)
 
-A dependency-free, SBCL-only structured logging toolkit for Common Lisp,
-modelled on Go's `log/slog`. It separates immutable log *records* from the
-*handlers* that serialize them: every built-in handler emits a record through
-exactly one `handle-log-record` method, so a line cannot reach output twice
-by two paths. The shipped system depends on nothing but ASDF, and field
-snapshotting is deep, cycle-safe, and bounded, so a logging call stays safe
-on attacker-influenced values.
+An SBCL-only structured logging toolkit for Common Lisp, modelled on Go's
+`log/slog`. It separates immutable log *records* from the *handlers* that
+serialize them: every built-in handler emits a record through exactly one
+`handle-log-record` method, so a line cannot reach output twice by two paths.
+Field snapshotting is deep, cycle-safe, and bounded, so a logging call stays
+safe on attacker-influenced values. Built on the nerima-lisp toolkit family —
+[`cl-date-kit`](https://github.com/nerima-lisp/cl-date-kit) for calendar/zone
+handling, [`cl-concurrent-kit`](https://github.com/nerima-lisp/cl-concurrent-kit)
+for locking and atomics, and
+[`cl-host-kit`](https://github.com/nerima-lisp/cl-host-kit) for filesystem
+operations — used directly, with no adapter layer in between.
 
 Full documentation is published at <https://nerima-lisp.github.io/cl-log-kit/>.
 The source for that site lives in [docs/src/](docs/src/).
@@ -47,7 +51,7 @@ with the same case-insensitive canonical name. Continue with
 ```nix
 # flake.nix
 inputs.cl-log-kit = {
-  url = "github:nerima-lisp/cl-log-kit/v1.0.0";
+  url = "github:nerima-lisp/cl-log-kit/v2.0.0";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```
@@ -102,10 +106,11 @@ this suite uses.
 
 ## Contributing
 
-Two constraints are load-bearing: the shipped `cl-log-kit` system has zero
-runtime dependencies, and `handle-log-record` is the only place a handler
-writes output. A change that violates either will be asked to change rather
-than to justify itself.
+One constraint is load-bearing: `handle-log-record` is the only place a
+handler writes output. A change that violates it will be asked to change
+rather than to justify itself. Runtime dependencies are limited to the
+nerima-lisp toolkit family (see `cl-log-kit.asd`); a new dependency from
+outside that family needs a real reason, not just convenience.
 
 See the org-wide
 [CONTRIBUTING](https://github.com/nerima-lisp/.github/blob/main/CONTRIBUTING.md)

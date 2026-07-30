@@ -19,8 +19,8 @@ another thread via WITH-CAPTURED-LOG-CONTEXT."
   (fields nil :read-only t)
   (span-id nil :read-only t))
 
-(setf (documentation 'log-context-snapshot-p 'function)
-      "True when VALUE is a LOG-CONTEXT-SNAPSHOT created by CAPTURE-LOG-CONTEXT.")
+(document-readers
+  (log-context-snapshot-p "True when VALUE is a LOG-CONTEXT-SNAPSHOT created by CAPTURE-LOG-CONTEXT."))
 
 (defun capture-log-context ()
   "Snapshot the calling thread's active WITH-LOG-CONTEXT fields and

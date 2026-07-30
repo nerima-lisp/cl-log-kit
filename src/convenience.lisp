@@ -34,7 +34,7 @@ and emitted."
     (handle-log-record (logger-handler logger) record)
     record))
 
-(defun emit-log (logger level message &optional (fields-plist (%constant-default nil)))
+(defun-defaulted emit-log (logger level message &optional (fields-plist nil))
   "Emit MESSAGE at LEVEL on LOGGER with FIELDS-PLIST, when LEVEL passes
 LOGGER's filter. Unlike the LOG-<LEVEL> macros, this is an ordinary
 function: MESSAGE and FIELDS-PLIST are always evaluated, even when the

@@ -1,8 +1,8 @@
 ;;;; cl-log-kit.asd
 (asdf:defsystem "cl-log-kit"
-  :description "Dependency-free, SBCL-only structured logging toolkit for Common Lisp"
-  :long-description "A slog-inspired (Go log/slog) structured logging toolkit built around a Handler protocol (handle-log-record) that guarantees each log record is emitted exactly once."
-  :version "1.0.0"
+  :description "SBCL-only structured logging toolkit for Common Lisp"
+  :long-description "A slog-inspired (Go log/slog) structured logging toolkit built around a Handler protocol (handle-log-record) that guarantees each log record is emitted exactly once. Built on the nerima-lisp toolkit family: cl-date-kit for calendar/zone handling, cl-concurrent-kit for locking/atomics, and cl-host-kit for filesystem operations."
+  :version "2.0.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -13,20 +13,30 @@
   ;; :VERSION test-op below need a modern ASDF; require it explicitly so a
   ;; stale system ASDF fails fast with a clear version error instead of a
   ;; confusing missing-function error deep in the load.
-  :depends-on ((:version "asdf" "3.3.1"))
+  :depends-on ((:version "asdf" "3.3.1")
+               (:version "cl-date-kit" "0.1.0")
+               (:version "cl-concurrent-kit" "0.1.0")
+               (:version "cl-host-kit" "0.1.0"))
   :pathname "src"
   :serial t
   :components ((:file "package")
                (:file "levels")
+               (:file "macro-utils")
                (:file "conditions")
+               (:file "limits")
                (:file "snapshot")
+               (:file "fields")
                (:file "record")
+               (:file "stream-state")
                (:file "handler")
                (:file "encoding")
                (:file "handler-text")
+               (:file "json-encoding")
                (:file "handler-json")
+               (:file "log-context")
                (:file "logger")
                (:file "lifecycle")
+               (:file "simple-handlers")
                (:file "handlers")
                (:file "convenience")
                (:file "processor-handler")
@@ -40,7 +50,7 @@
 (asdf:defsystem "cl-log-kit/test"
   :description "Test system for cl-log-kit"
   :long-description "Regression tests for the cl-log-kit public API."
-  :version "1.0.0"
+  :version "2.0.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -48,12 +58,14 @@
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")
   :depends-on ("cl-log-kit"
-               (:version "cl-weave" "1.0.0")
+               (:version "cl-weave" "1.1.0")
                ;; Test-only: an independent nerima-lisp JSON parser used to
                ;; assert json-handler output parses back to the expected
-               ;; structure, not just contains the right substrings. The
-               ;; shipped cl-log-kit system stays dependency-free.
-               (:version "cl-json-kit" "1.0.0"))
+               ;; structure, not just contains the right substrings. Its
+               ;; writer is not zero-allocation and uses its own value model,
+               ;; so it stays a test-only round-trip oracle rather than the
+               ;; runtime json-handler's writer.
+               (:version "cl-json-kit" "1.0.1"))
   :pathname "t"
   :serial t
   :components ((:file "package")

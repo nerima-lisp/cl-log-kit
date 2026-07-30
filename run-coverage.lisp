@@ -18,13 +18,14 @@
 ;;; emits, the less of that behavior sb-cover can measure at all. Every
 ;;; macro in this codebase is therefore restricted to behavioral codegen
 ;;; (DEFHANDLE/DEFFLUSH/DEFCLOSE, DEFINE-LOG-LEVEL-MACROS,
-;;; DEFINE-STREAM-HANDLER-CONSTRUCTORS, CHECK-TYPES) — it emits ordinary,
-;;; independently-testable functions rather than embedding runtime logic in
-;;; the macro body itself, which is what keeps the measurable-code ceiling
-;;; as high as it is. Converting DEFCONSTANT/DEFCLASS/DEFPACKAGE to runtime
-;;; function calls purely to satisfy sb-cover was evaluated and rejected: it
-;;; would regress idiom, readability, and (for the level constants) the
-;;; compile-time substitution the whole design relies on, in exchange for a
+;;; DEFINE-STREAM-HANDLER-CONSTRUCTORS, CHECK-TYPES, DEFUN-DEFAULTED,
+;;; DEFMETHOD-DEFAULTED) — it emits ordinary, independently-testable
+;;; functions rather than embedding runtime logic in the macro body itself,
+;;; which is what keeps the measurable-code ceiling as high as it is.
+;;; Converting DEFCONSTANT/DEFCLASS/DEFPACKAGE to runtime function calls
+;;; purely to satisfy sb-cover was evaluated and rejected: it would regress
+;;; idiom, readability, and (for the level constants) the compile-time
+;;; substitution the whole design relies on, in exchange for a
 ;;; metric that would no longer measure anything meaningful. Raising
 ;;; *COVERAGE-MINIMUM-* below requires new evidence of closeable gaps in
 ;;; CHANGELOG.md, not a quiet edit here.
@@ -75,6 +76,29 @@
 ;;      never observe executing — the covered-expression count is untouched
 ;;      while the total rises. Documenting the public surface is worth more
 ;;      than the metric it costs.
+;;
+;; Two specific DEFMACRO/table-dispatch conversions were evaluated during the
+;; 2026 modernization pass and deliberately left as plain functions, for the
+;; same reason as (1) above plus one more: both sit on a DECLARE'd hot path.
+;;
+;;   - HANDLER.LISP's %BEGIN-STREAM-OPERATION/%END-STREAM-OPERATION pair
+;;     around %WRITE-HANDLER-RECORD is already CPS in substance (WRITER is a
+;;     continuation); wrapping it in one more %CALL-WITH-.../WITH-... macro
+;;     pair for house-style symmetry would move it behind (1)'s coverage
+;;     blind spot and add a closure allocation to the library's documented
+;;     zero-alloc write path (see handler-text.lisp/handler-json.lisp's
+;;     DYNAMIC-EXTENT closures) for no behavioral benefit.
+;;   - SNAPSHOT.LISP's %SNAPSHOT-FIELD-VALUE dispatches on value type with a
+;;     compile-time TYPECASE rather than a runtime type->handler table. The
+;;     function is declared (SPEED 3) as part of the library's documented
+;;     hot path; a table lookup would trade that compile-time dispatch for
+;;     runtime indirection to satisfy a "data vs. logic" preference this
+;;     function's performance contract does not have room for.
+;;
+;; If a future pass reconsiders either, re-run the multi-threaded specs in
+;; t/handler-test.lisp and the allocation-bound specs in t/performance-test.lisp
+;; repeatedly first — both files exist specifically to catch what a single
+;; run cannot.
 ;;
 ;; The true aggregate is 93.95% expression / 98.77% branch. These floors sit
 ;; just below it so ordinary floating-point/platform variance in sb-cover's
