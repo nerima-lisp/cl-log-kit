@@ -75,10 +75,11 @@ no adapter layer in between.
   nothing but ASDF 3.3.1 or newer and SBCL itself — nothing to audit, pin, or
   break in a consumer's own dependency graph. `cl-log-kit/test` depends on
   `cl-weave` and `cl-json-kit`, both test-only.
-- **Semantic Versioning, enforced by changelog discipline.** Every behavior
-  change is recorded in the [changelog](changelog.md) under the version it
-  shipped in, and anything that changes the shape or behavior of an exported
-  symbol gets a major version and its own migration path. See
+- **Semantic Versioning, enforced by release-note discipline.** Every behavior
+  change is recorded in the
+  [release notes](https://github.com/nerima-lisp/cl-log-kit/releases) under the
+  version it shipped in, and anything that changes the shape or behavior of an
+  exported symbol gets a major version and its own migration path. See
   [Compatibility](compatibility.md).
 - **A CI gate that runs the exact suite a contributor runs locally.**
   `nix flake check` drives the SBCL suite, the formatting gate, and this

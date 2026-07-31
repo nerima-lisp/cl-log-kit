@@ -101,14 +101,16 @@
     let
       lib = nixpkgs.lib;
 
-      # x86_64-linux is what CI builds. aarch64-darwin is declared as well
-      # because it is the platform the benchmark figures in the docs were
-      # measured on and where the suite is run before every release, so it is
-      # verified rather than merely hoped for.
-      systems = [
-        "x86_64-linux"
-        "aarch64-darwin"
-      ];
+      # x86_64-linux only: it is the one platform CI builds, and the org does
+      # not declare a platform that is not gated. aarch64-darwin was dropped in
+      # the 2026-08-01 revision of PACKAGE_STANDARD.md -- it was verified only
+      # by the maintainer remembering to run `nix flake check` locally, which
+      # is not a gate. Declaring it promised support nothing enforced.
+      #
+      # Consequence: `nix develop` and `nix build` no longer resolve on macOS,
+      # because mkPackageFlake generates packages/checks/apps/devShells from
+      # this one list. Development happens on Linux.
+      systems = [ "x86_64-linux" ];
     in
     # `mkPackageFlake` spans systems -- it obtains a `pkgs` and its own
     # cl-nix-forge instance per entry in `systems` -- so the per-system `lib`
@@ -179,17 +181,18 @@
       timeoutSeconds = 120;
 
       # docs/mkdocs.yml + docs/src/, built with `--strict` so a broken link
-      # or a page missing from the nav is a build failure. The fileset also
-      # carries the top-level CHANGELOG.md because docs/src/changelog.md
-      # snippet-includes it -- keeping one copy is what stops the site's
-      # history from falling behind the file GitHub shows on the release
-      # page.
+      # or a page missing from the nav is a build failure.
+      #
+      # The fileset used to also carry the top-level CHANGELOG.md, which
+      # docs/src/changelog.md snippet-included. Both files were abolished in
+      # the 2026-08-01 revision: the GitHub Release description is now the
+      # only canonical changelog, so there is nothing left to include and
+      # pymdownx.snippets is no longer configured.
       docs = {
         root = ./.;
         fileset = lib.fileset.unions [
           ./docs/mkdocs.yml
           ./docs/src
-          ./CHANGELOG.md
         ];
         mkdocsYmlName = "docs/mkdocs.yml";
       };

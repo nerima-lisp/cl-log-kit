@@ -11,7 +11,7 @@
 ;;; lists, DEFPACKAGE export lists, IN-PACKAGE) or a DEFMACRO body, which
 ;;; runs only at macroexpansion time and is invisible to sb-cover's runtime
 ;;; STORE-COVERAGE-DATA instrumentation by construction — confirmed by
-;;; direct experiment, not assumption (see CHANGELOG.md). The second
+;;; direct experiment, not assumption. The second
 ;;; category is in direct, structural tension with writing more of this
 ;;; library's logic as DEFMACRO bodies: the more behavior a macro's
 ;;; generative template owns rather than the ordinary functions/methods it
@@ -27,8 +27,9 @@
 ;;; idiom, readability, and (for the level constants) the compile-time
 ;;; substitution the whole design relies on, in exchange for a
 ;;; metric that would no longer measure anything meaningful. Raising
-;;; *COVERAGE-MINIMUM-* below requires new evidence of closeable gaps in
-;;; CHANGELOG.md, not a quiet edit here.
+;;; *COVERAGE-MINIMUM-* below requires new evidence of closeable gaps,
+;;; stated in the pull request and carried into the release notes, not a
+;;; quiet edit here.
 ;;; Usage: sbcl --script run-coverage.lisp
 (require :asdf)
 (require :sb-cover)

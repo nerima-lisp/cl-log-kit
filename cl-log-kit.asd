@@ -1,11 +1,19 @@
 ;;;; cl-log-kit.asd
+
+;;;; This form comes FIRST, before any defsystem. ASDF binds *package* to
+;;;; ASDF-USER only for a file it loads itself; read any other way -- a REPL
+;;;; `load`, an editor evaluating the buffer, flake.nix parsing :version -- the
+;;;; file is read in whatever package happens to be current. Saying it makes
+;;;; the file self-contained.
+(in-package #:asdf-user)
+
 (asdf:defsystem "cl-log-kit"
   :description "SBCL-only structured logging toolkit for Common Lisp"
   :long-description "A slog-inspired (Go log/slog) structured logging toolkit built around a Handler protocol (handle-log-record) that guarantees each log record is emitted exactly once. Built on the nerima-lisp toolkit family: cl-date-kit for calendar/zone handling, cl-concurrent-kit for locking/atomics, and cl-host-kit for filesystem operations."
-  :version "2.0.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
+  :version "2.0.0"
   :homepage "https://github.com/nerima-lisp/cl-log-kit"
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")

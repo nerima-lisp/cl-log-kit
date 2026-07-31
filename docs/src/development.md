@@ -129,8 +129,9 @@ mutation-testing, and mocking pages.
   a major version and a documented migration path, so it is worth agreeing on
   the shape before the implementation.
 - Add or update specs for every behavior change.
-- Update `CHANGELOG.md` and, when the public surface or documented behavior
-  moves, the affected pages under `docs/src/`.
+- When the public surface or documented behavior moves, update the affected
+  pages under `docs/src/`. Release history is not kept in the tree: it lives
+  in the GitHub Release description, written when the tag is published.
 - Every exported symbol carries a docstring. A new one is not finished
   without it.
 - State the commands you ran, and say plainly if something could not be run.

@@ -18,7 +18,8 @@ handling), `cl-concurrent-kit` (locking/atomics), and `cl-host-kit`
 The exported surface is versioned under
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Anything that
 changes the shape or behavior of an exported symbol gets a major version and
-a `### Breaking Changes` section in the [changelog](changelog.md) with an
+a `### Breaking Changes` section in the
+[release notes](https://github.com/nerima-lisp/cl-log-kit/releases) with an
 explicit migration path. Every behavior change is recorded there under the
 version it shipped in.
 

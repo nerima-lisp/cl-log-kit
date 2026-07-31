@@ -20,7 +20,6 @@ the required version bump and the migration path. If not, say so.
 ## Checklist
 
 - [ ] Specs added or updated for the behavior change
-- [ ] `CHANGELOG.md` updated
 - [ ] `docs/src/` updated, if documented behavior moved
 - [ ] Any new exported symbol has a docstring
 - [ ] Coverage floors in `run-coverage.lisp` unchanged — or the change is
