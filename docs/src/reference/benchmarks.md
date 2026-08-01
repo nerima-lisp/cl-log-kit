@@ -43,7 +43,7 @@ log4cl's comparably-configured path does not do at all. On every call
 per-field record, and guarantees the deep, cycle-checked field snapshot,
 canonical-key deduplication, reentrant thread-safe stream serialization, and
 structured resource-limit conditions described in
-[Fields](fields.md) and [Handlers](handlers.md). log4cl writes one
+[Fields](../guide/fields.md) and [Handlers](../guide/handlers.md). log4cl writes one
 already-formatted message string.
 
 `cl-log-kit` is not, and does not claim to be, the fastest Common Lisp

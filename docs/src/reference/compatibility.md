@@ -37,12 +37,12 @@ security defects rather than cosmetic bugs:
   terminate a record early, start a second one, or visually disguise its own
   content in `text-handler` output (control characters, U+2028/U+2029,
   bidirectional or invisible formatting controls), or break out of a string
-  in `json-handler` output. See [Handlers](handlers.md).
+  in `json-handler` output. See [Handlers](../guide/handlers.md).
 - **Unbounded resource consumption from a field value.** Any input that makes
   the snapshot walk exceed its documented depth, node, string-length, or
   collection-size bounds, or that makes it fail to terminate. Cyclic and
   hostile structures must signal, not hang or exhaust memory. See
-  [Fields](fields.md).
+  [Fields](../guide/fields.md).
 - **Unintended code execution while rendering.** In particular, a path that
   invokes a user-defined `print-object` or condition `report` method that the
   documented API says will not be invoked. See

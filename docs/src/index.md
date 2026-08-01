@@ -17,8 +17,8 @@ no adapter layer in between.
     (asdf:load-system "cl-log-kit")
     ```
 
-    Continue with [Installation](installation.md) → [Quick Start](quick-start.md)
-    → [Levels](levels.md) and [Fields](fields.md).
+    Continue with [Getting Started](getting-started.md) →
+    [Levels](guide/levels.md) and [Fields](guide/fields.md).
 
 ## Explore the docs
 
@@ -31,8 +31,7 @@ no adapter layer in between.
     Load the system with ASDF or Nix, and build your first logger and log
     line.
 
-    [:octicons-arrow-right-24: Installation](installation.md) ·
-    [Quick Start](quick-start.md)
+    [:octicons-arrow-right-24: Getting Started](getting-started.md)
 
 -   :material-format-list-bulleted:{ .lg .middle } &nbsp; **Core Concepts**
 
@@ -41,9 +40,9 @@ no adapter layer in between.
     Severity levels, structured fields, and how loggers derive scoped
     children with `logger-with`, `derive-logger`, and `with-log-context`.
 
-    [:octicons-arrow-right-24: Levels](levels.md) ·
-    [Fields](fields.md) ·
-    [Logger Derivation and Context](context.md)
+    [:octicons-arrow-right-24: Levels](guide/levels.md) ·
+    [Fields](guide/fields.md) ·
+    [Logger Derivation and Context](guide/context.md)
 
 -   :material-tray-arrow-up:{ .lg .middle } &nbsp; **Handlers**
 
@@ -53,7 +52,7 @@ no adapter layer in between.
     `filter-handler`, file rotation and trigger-based buffering, and the
     handler lifecycle protocol.
 
-    [:octicons-arrow-right-24: Handlers](handlers.md)
+    [:octicons-arrow-right-24: Handlers](guide/handlers.md)
 
 -   :material-timeline-clock-outline:{ .lg .middle } &nbsp; **Conditions and Spans**
 
@@ -62,8 +61,8 @@ no adapter layer in between.
     Turn Lisp conditions into structured fields, and time an operation with
     paired start/end log records.
 
-    [:octicons-arrow-right-24: Logging Conditions](conditions.md) ·
-    [Log Spans](spans.md)
+    [:octicons-arrow-right-24: Logging Conditions](reference/conditions.md) ·
+    [Log Spans](guide/spans.md)
 
 </div>
 
@@ -80,32 +79,32 @@ no adapter layer in between.
   [release notes](https://github.com/nerima-lisp/cl-log-kit/releases) under the
   version it shipped in, and anything that changes the shape or behavior of an
   exported symbol gets a major version and its own migration path. See
-  [Compatibility](compatibility.md).
+  [Compatibility](reference/compatibility.md).
 - **A CI gate that runs the exact suite a contributor runs locally.**
   `nix flake check` drives the SBCL suite, the formatting gate, and this
   site's `--strict` build; a separate coverage gate fails the build on any
   expression or branch coverage regression, currently 93.95% / 98.77%. See
-  [Development](development.md).
+  [Development](project/development.md).
 - **Concurrency-safe by construction, not by convention.** Every handler that
   owns a stream serializes writes and closes through a single reentrant lock,
   and every composite handler's lifecycle guarantees close-at-most-once under
   concurrent and recursive callers. These are exercised by dedicated
   multi-thread specs, not single-threaded examples. See
-  [Handlers](handlers.md).
+  [Handlers](guide/handlers.md).
 - **Bounded by construction against hostile or malformed input.** Field
   depth, node count, string length, and collection size are all capped, with
   structured conditions on every limit, so a logging call can never be the
   vector for an unbounded-memory or infinite-loop bug even on
-  attacker-influenced field values. See [Fields](fields.md).
+  attacker-influenced field values. See [Fields](guide/fields.md).
 - **MIT-licensed**, with a public bug tracker and no undocumented private
   API — every exported symbol has a docstring.
 
 ## Status
 
 Version 1.0.0. `cl-log-kit` is a small, stable surface — see the
-[API Reference](api-reference.md) for the full list of exported symbols. The
+[API Reference](reference/api.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
-suite documented in [Development](development.md):
+suite documented in [Development](project/development.md):
 
 - `make-logger` / `logger-with` / `derive-logger` / `logger-child` for
   building and deriving structured loggers
@@ -145,28 +144,27 @@ suite documented in [Development](development.md):
 
 ## Guide Map
 
-- [Installation](installation.md) — loading `cl-log-kit` with ASDF or Nix.
-- [Quick Start](quick-start.md) — a first logger, a first log line, JSON
-  output.
-- [Levels](levels.md) — the five built-in severities, custom levels, and
+- [Getting Started](getting-started.md) — loading `cl-log-kit` with ASDF or
+  Nix, then a first logger, a first log line, and JSON output.
+- [Levels](guide/levels.md) — the five built-in severities, custom levels, and
   level-gated evaluation.
-- [Fields](fields.md) — property-list fields, canonicalization, snapshotting,
+- [Fields](guide/fields.md) — property-list fields, canonicalization, snapshotting,
   and resource limits.
-- [Logger Derivation and Context](context.md) — `logger-with`,
+- [Logger Derivation and Context](guide/context.md) — `logger-with`,
   `derive-logger`, `logger-child`, and `with-log-context` precedence rules.
-- [Handlers](handlers.md) — `text-handler`, `json-handler`, composition, and
+- [Handlers](guide/handlers.md) — `text-handler`, `json-handler`, composition, and
   the lifecycle protocol.
-- [Logging Conditions](conditions.md) — `condition-fields` and
+- [Logging Conditions](reference/conditions.md) — `condition-fields` and
   `log-condition`.
-- [Log Spans](spans.md) — `with-log-span` timing and correlation.
-- [Records and Extension](extension.md) — `log-record`, implementing new
+- [Log Spans](guide/spans.md) — `with-log-span` timing and correlation.
+- [Records and Extension](guide/extension.md) — `log-record`, implementing new
   handlers, and injecting a deterministic clock.
-- [API Reference](api-reference.md) — every exported symbol, grouped by area.
-- [Compatibility](compatibility.md) — supported platforms, the stability
+- [API Reference](reference/api.md) — every exported symbol, grouped by area.
+- [Compatibility](reference/compatibility.md) — supported platforms, the stability
   promise, and what counts as a security defect.
-- [Benchmarks](benchmarks.md) — `handle-log-record` timings and the
+- [Benchmarks](reference/benchmarks.md) — `handle-log-record` timings and the
   zero-allocation guarantee the suite asserts.
-- [Development](development.md) — the dev shell, coverage floors, and the
+- [Development](project/development.md) — the dev shell, coverage floors, and the
   Nix-driven test workflow.
 
 ## Nix Workflow

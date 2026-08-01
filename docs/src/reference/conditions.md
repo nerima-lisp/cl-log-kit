@@ -27,7 +27,7 @@ described below.
 `log-condition` always emits `:condition-type` and `:condition-message`,
 and `:backtrace` when `:capture-backtrace t` or an explicit `:backtrace` is
 supplied. These three keys are reserved: explicit `:fields` are merged using
-the normal [event-field precedence](context.md#field-precedence), but a
+the normal [event-field precedence](../guide/context.md#field-precedence), but a
 `:fields` entry for `:condition-type`, `:condition-message`, or `:backtrace`
 cannot override the value `log-condition` derived.
 
@@ -63,7 +63,7 @@ A rendered report is additionally printed with `*print-level*` 4 and
 report is elided rather than walked in full.
 
 Both limits are themselves capped by the global
-[field string-length limit](fields.md#resource-limits) (1,048,576
+[field string-length limit](../guide/fields.md#resource-limits) (1,048,576
 characters) — requesting a limit above that signals
 `log-resource-limit-exceeded` instead of silently clamping.
 

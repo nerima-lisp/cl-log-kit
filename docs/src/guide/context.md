@@ -99,4 +99,4 @@ highest to lowest:
 
 This is the same precedence `with-log-span` and `log-condition` use for
 their own reserved fields (see [Log Spans](spans.md) and
-[Logging Conditions](conditions.md)).
+[Logging Conditions](../reference/conditions.md)).

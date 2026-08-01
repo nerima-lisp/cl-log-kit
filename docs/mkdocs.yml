@@ -122,35 +122,37 @@ markdown_extensions:
       permalink: true
       title: On this page
 
-# Six sections, fixed in this order, ordered by the reader's state: Getting
-# Started is for someone who has not run it yet, Guide for someone who has,
-# Reference for someone writing code and looking up an answer, Internals for
-# someone changing the library, Project for someone contributing to it.
-# Guide topics are in dependency order, not alphabetical: each page uses the
-# vocabulary the ones above it introduced.
+# Five sections, fixed in this order by DOCS_STANDARD.md, ordered by the
+# reader's state: Getting Started is for someone who has not run it yet, Guide
+# for someone who has, Reference for someone writing code and looking up an
+# answer, Project for someone contributing to it. Guide topics are in
+# dependency order, not alphabetical: each page uses the vocabulary the ones
+# above it introduced.
+#
+# The section names match the directories under docs/src/, so the answer to
+# "where does this page live" is the same whether you look at the nav or at
+# the tree. index.md and getting-started.md stay at the root: a reader who has
+# not run anything yet should not have to look inside guide/.
 #
 # --strict fails the build on a page that is not listed here, which is what
 # keeps this nav from silently falling behind docs/src/.
 nav:
   - Home: index.md
-  - Getting Started:
-      - Installation: installation.md
-      - Quick Start: quick-start.md
+  - Getting Started: getting-started.md
   - Guide:
-      - Levels: levels.md
-      - Fields: fields.md
-      - Logger Derivation and Context: context.md
-      - Handlers: handlers.md
-      - Logging Conditions: conditions.md
-      - Log Spans: spans.md
-      - Records and Extension: extension.md
+      - Levels: guide/levels.md
+      - Fields: guide/fields.md
+      - Logger Derivation and Context: guide/context.md
+      - Handlers: guide/handlers.md
+      - Log Spans: guide/spans.md
+      - Records and Extension: guide/extension.md
   - Reference:
-      - API Reference: api-reference.md
-      - Compatibility: compatibility.md
-  - Internals:
-      - Benchmarks: benchmarks.md
+      - API: reference/api.md
+      - Conditions: reference/conditions.md
+      - Compatibility: reference/compatibility.md
+      - Benchmarks: reference/benchmarks.md
   - Project:
-      - Development: development.md
+      - Development: project/development.md
 
 # docs/notes/ holds measurements worth keeping but not worth publishing.
 # Without this declaration --strict fails the build the moment one is added.

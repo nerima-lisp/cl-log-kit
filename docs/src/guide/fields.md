@@ -64,6 +64,6 @@ Exceeding any of these signals `log-resource-limit-exceeded`. Its
 `:depth`, `:nodes`, `:string-length`, `:array-elements`,
 `:hash-table-entries`, or, for `log-condition`'s own output bounds,
 `:condition-message-length` / `:condition-backtrace-length` (see
-[Logging Conditions](conditions.md#output-bounds)). `log-resource-limit-limit`
+[Logging Conditions](../reference/conditions.md#output-bounds)). `log-resource-limit-limit`
 and `log-resource-limit-actual` report the configured bound and the
 observed value.

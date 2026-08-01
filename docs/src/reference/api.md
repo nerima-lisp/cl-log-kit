@@ -3,11 +3,11 @@
 Every symbol exported from the `log-kit` package (see
 [`src/package.lisp`](https://github.com/nerima-lisp/cl-log-kit/blob/main/src/package.lisp)),
 grouped by area. `log-kit` shadows the common-lisp `log` symbol — see
-[Installation](installation.md#package-and-naming).
+[Installation](../getting-started.md#package-and-naming).
 
 ## Levels
 
-See [Levels](levels.md) for the full discussion.
+See [Levels](../guide/levels.md) for the full discussion.
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ See [Levels](levels.md) for the full discussion.
 
 ## Errors and Conditions
 
-See [Fields](fields.md#resource-limits) for the resource-limit table.
+See [Fields](../guide/fields.md#resource-limits) for the resource-limit table.
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -45,7 +45,7 @@ See [Fields](fields.md#resource-limits) for the resource-limit table.
 
 ## JSON Value Model
 
-See [Handlers → JSON](handlers.md#json) for the encoding table.
+See [Handlers → JSON](../guide/handlers.md#json) for the encoding table.
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ See [Handlers → JSON](handlers.md#json) for the encoding table.
 
 ## Fields
 
-See [Fields](fields.md).
+See [Fields](../guide/fields.md).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ See [Fields](fields.md).
 
 ## Log Records
 
-See [Records and Extension](extension.md#log-record).
+See [Records and Extension](../guide/extension.md#log-record).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -84,7 +84,7 @@ See [Records and Extension](extension.md#log-record).
 
 ## Handler Protocol
 
-See [Records and Extension → Implementing a new handler](extension.md#implementing-a-new-handler).
+See [Records and Extension → Implementing a new handler](../guide/extension.md#implementing-a-new-handler).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -97,7 +97,7 @@ See [Records and Extension → Implementing a new handler](extension.md#implemen
 
 ## Built-in Handlers
 
-See [Handlers](handlers.md) for wire formats and stream semantics.
+See [Handlers](../guide/handlers.md) for wire formats and stream semantics.
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -108,7 +108,7 @@ See [Handlers](handlers.md) for wire formats and stream semantics.
 
 ## Composition Handlers
 
-See [Handlers → Composition and lifecycle](handlers.md#composition-and-lifecycle).
+See [Handlers → Composition and lifecycle](../guide/handlers.md#composition-and-lifecycle).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -129,8 +129,8 @@ See [Handlers → Composition and lifecycle](handlers.md#composition-and-lifecyc
 
 ## Loggers
 
-See [Quick Start](quick-start.md) and
-[Logger Derivation and Context](context.md).
+See [Quick Start](../getting-started.md) and
+[Logger Derivation and Context](../guide/context.md).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -148,8 +148,8 @@ See [Quick Start](quick-start.md) and
 
 ## Default Logger and Context
 
-See [Quick Start → Using a default logger](quick-start.md#using-a-default-logger)
-and [Logger Derivation and Context → `with-log-context`](context.md#with-log-context).
+See [Quick Start → Using a default logger](../getting-started.md#using-a-default-logger)
+and [Logger Derivation and Context → `with-log-context`](../guide/context.md#with-log-context).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -160,7 +160,7 @@ and [Logger Derivation and Context → `with-log-context`](context.md#with-log-c
 
 ## Thread Context Propagation
 
-See [Logger Derivation and Context → Propagating context across threads](context.md#propagating-context-across-threads).
+See [Logger Derivation and Context → Propagating context across threads](../guide/context.md#propagating-context-across-threads).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -172,7 +172,7 @@ See [Logger Derivation and Context → Propagating context across threads](conte
 
 ## Logging Macros
 
-See [Quick Start](quick-start.md) and [Levels → Level-gated evaluation](levels.md#level-gated-evaluation).
+See [Quick Start](../getting-started.md) and [Levels → Level-gated evaluation](../guide/levels.md#level-gated-evaluation).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
@@ -192,7 +192,7 @@ See [Logging Conditions](conditions.md).
 
 ## Log Spans
 
-See [Log Spans](spans.md).
+See [Log Spans](../guide/spans.md).
 
 | Symbol | Kind | Description |
 | --- | --- | --- |
