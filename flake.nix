@@ -29,7 +29,7 @@
     # `lib.core.dedup.ancestryWalker` fails with "attribute 'ancestry'
     # missing" trying to walk a dependency's subtree built by the other one.
     cl-date-kit = {
-      url = "github:nerima-lisp/cl-date-kit/v0.2.0";
+      url = "github:nerima-lisp/cl-date-kit/v0.3.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -39,7 +39,7 @@
     # lifecycle. Pinned to the tag matching cl-log-kit.asd's
     # (:version "cl-concurrent-kit" "0.1.0") floor.
     cl-concurrent-kit = {
-      url = "github:nerima-lisp/cl-concurrent-kit/v0.3.0";
+      url = "github:nerima-lisp/cl-concurrent-kit/v0.5.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -48,7 +48,7 @@
     # rotating-file-handler's retention pruning. Pinned to the tag matching
     # cl-log-kit.asd's (:version "cl-host-kit" "0.2.0") floor.
     cl-host-kit = {
-      url = "github:nerima-lisp/cl-host-kit/v0.2.5";
+      url = "github:nerima-lisp/cl-host-kit/v0.3.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -56,7 +56,7 @@
     # Test framework, a check-only dependency (see cl-log-kit.asd's
     # cl-log-kit/test system). Pinned to the tag matching the .asd floor.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v1.1.4";
+      url = "github:nerima-lisp/cl-weave/v1.2.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
