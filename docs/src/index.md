@@ -101,7 +101,7 @@ no adapter layer in between.
 
 ## Status
 
-Version 1.0.0. `cl-log-kit` is a small, stable surface — see the
+Version 2.0.1. `cl-log-kit` is a small, stable surface — see the
 [API Reference](reference/api.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
 suite documented in [Development](project/development.md):

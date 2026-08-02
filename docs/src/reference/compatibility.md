@@ -2,8 +2,11 @@
 
 ## Supported environment
 
-SBCL only, on the platforms the flake builds: `x86_64-linux` and
-`aarch64-darwin`.
+SBCL only, on the one platform the flake builds and CI gates: `x86_64-linux`.
+`aarch64-darwin` was dropped from `flake.nix`'s `systems` list in the
+2026-08-01 revision of `PACKAGE_STANDARD.md` — it was previously verified
+only by the maintainer remembering to run `nix flake check` locally, which is
+not a gate, so declaring it supported promised something nothing enforced.
 
 The library uses `sb-thread`, `sb-gray`, `sb-ext`, and `sb-debug` directly
 for its locking, bounded output streams, atomics, and backtrace capture, so
