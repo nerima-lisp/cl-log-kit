@@ -39,7 +39,7 @@
     # lifecycle. Pinned to the tag matching cl-log-kit.asd's
     # (:version "cl-concurrent-kit" "0.1.0") floor.
     cl-concurrent-kit = {
-      url = "github:nerima-lisp/cl-concurrent-kit/v0.1.0";
+      url = "github:nerima-lisp/cl-concurrent-kit/v0.3.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -48,7 +48,7 @@
     # rotating-file-handler's retention pruning. Pinned to the tag matching
     # cl-log-kit.asd's (:version "cl-host-kit" "0.2.0") floor.
     cl-host-kit = {
-      url = "github:nerima-lisp/cl-host-kit/v0.2.0";
+      url = "github:nerima-lisp/cl-host-kit/v0.2.5";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -56,7 +56,7 @@
     # Test framework, a check-only dependency (see cl-log-kit.asd's
     # cl-log-kit/test system). Pinned to the tag matching the .asd floor.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v1.1.0";
+      url = "github:nerima-lisp/cl-weave/v1.1.4";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -66,7 +66,7 @@
     # merely containing the right substrings. Pinned to the .asd floor, as
     # cl-weave above.
     cl-json-kit = {
-      url = "github:nerima-lisp/cl-json-kit/v1.0.1";
+      url = "github:nerima-lisp/cl-json-kit/v1.0.2";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -74,7 +74,7 @@
     # The structural-refactoring CLI contributors run by hand. Consumed only
     # as an interactive devShell package, never as a Lisp dependency.
     paredit-cli = {
-      url = "github:nerima-lisp/paredit-cli/v1.3.0";
+      url = "github:nerima-lisp/paredit-cli/v1.4.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.treefmt-nix.follows = "treefmt-nix";
     };
