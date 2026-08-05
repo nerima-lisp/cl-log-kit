@@ -373,4 +373,13 @@
   (it "%write-json-value falls back to unsupported-json-value for raw unsupported types"
     (dolist (value (list (list 1 2) (make-hash-table) 1/2))
       (expect (lambda () (with-output-to-string (stream) (log-kit::%write-json-value value stream)))
-              :to-throw 'unsupported-json-value))))
+              :to-throw 'unsupported-json-value)))
+
+  (it "%snapshot-field-value falls back to a fresh context when called with neither an explicit context nor an active dynamic one"
+    ;; Every internal caller in fields.lisp binds *FIELD-SNAPSHOT-CONTEXT*
+    ;; before ever reaching %SNAPSHOT-FIELD-VALUE, and every recursive
+    ;; self-call passes CONTEXT explicitly, so the (%MAKE-SNAPSHOT-CONTEXT)
+    ;; fallback in its OR is otherwise never exercised. Calling it directly,
+    ;; bypassing both, proves the defensive fallback itself is correct.
+    (expect log-kit::*field-snapshot-context* :to-be nil)
+    (expect (log-kit::%snapshot-field-value (list 1 2 3)) :to-equal (list 1 2 3))))
