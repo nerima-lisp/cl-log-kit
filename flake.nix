@@ -15,7 +15,7 @@
     # devShells/formatter/overlays output table from one mkPackageFlake call
     # below, instead of hand-rolling each of them.
     cl-nix-forge = {
-      url = "github:nerima-lisp/cl-nix-forge/v0.4.0";
+      url = "github:nerima-lisp/cl-nix-forge/v0.5.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -48,7 +48,7 @@
     # rotating-file-handler's retention pruning. Pinned to the tag matching
     # cl-log-kit.asd's (:version "cl-host-kit" "0.2.0") floor.
     cl-host-kit = {
-      url = "github:nerima-lisp/cl-host-kit/v0.3.0";
+      url = "github:nerima-lisp/cl-host-kit/v0.3.1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -56,7 +56,7 @@
     # Test framework, a check-only dependency (see cl-log-kit.asd's
     # cl-log-kit/test system). Pinned to the tag matching the .asd floor.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v1.2.0";
+      url = "github:nerima-lisp/cl-weave/v1.3.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -66,7 +66,7 @@
     # merely containing the right substrings. Pinned to the .asd floor, as
     # cl-weave above.
     cl-json-kit = {
-      url = "github:nerima-lisp/cl-json-kit/v1.0.2";
+      url = "github:nerima-lisp/cl-json-kit/v1.2.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.cl-nix-forge.follows = "cl-nix-forge";
     };
@@ -74,7 +74,7 @@
     # The structural-refactoring CLI contributors run by hand. Consumed only
     # as an interactive devShell package, never as a Lisp dependency.
     paredit-cli = {
-      url = "github:nerima-lisp/paredit-cli/v1.4.0";
+      url = "github:nerima-lisp/paredit-cli/v1.5.0";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.treefmt-nix.follows = "treefmt-nix";
     };
@@ -145,16 +145,14 @@
       # sibling's own flake builds its ASDF system, so this is an ordinary
       # `lispDependencies` entry rather than a hand-rolled registry string.
       #
-      # cl-date-kit's v0.2.0 and cl-host-kit's v0.2.0 tags already build
-      # themselves with `mkPackageFlake`, so their package outputs carry
-      # cl-nix-forge's own dependency-ancestry metadata as-is.
-      # cl-concurrent-kit's v0.1.0 tag still predates that migration, so it
-      # needs `fromDerivation` leaf-wrapping until a `mkPackageFlake` release
-      # is tagged upstream -- without it, `dedup.nix` cannot merge its
-      # ancestry-less output into this package's own dependency tree.
+      # cl-date-kit's v0.3.0, cl-concurrent-kit's v0.5.0, and cl-host-kit's
+      # v0.3.1 tags all build themselves with `mkPackageFlake`, so their
+      # package outputs already carry cl-nix-forge's own dependency-ancestry
+      # metadata as-is -- none of the three needs `fromDerivation`
+      # leaf-wrapping.
       lispDependencies = ctx: [
         cl-date-kit.packages.${ctx.system}.cl-date-kit
-        (ctx.cl.fromDerivation { drv = cl-concurrent-kit.packages.${ctx.system}.cl-concurrent-kit; })
+        cl-concurrent-kit.packages.${ctx.system}.cl-concurrent-kit
         cl-host-kit.packages.${ctx.system}.cl-host-kit
       ];
 
@@ -166,15 +164,13 @@
       # output from its `packages.*.default` -- so this consumer never
       # compiles either sibling itself.
       #
-      # cl-weave's v1.1.0 tag already builds itself with `mkPackageFlake`, so
-      # its package output carries cl-nix-forge's ancestry metadata as-is.
-      # cl-json-kit's v1.0.1 tag still predates that migration, so it needs
-      # the same `fromDerivation` leaf-wrapping as the runtime dependencies
-      # above; drop it once a cl-json-kit release built by `mkPackageFlake`
-      # is tagged.
+      # cl-weave's v1.3.0 and cl-json-kit's v1.2.0 tags both build themselves
+      # with `mkPackageFlake`, so their package outputs already carry
+      # cl-nix-forge's ancestry metadata as-is -- neither needs
+      # `fromDerivation` leaf-wrapping.
       lispCheckDependencies = ctx: [
         cl-weave.packages.${ctx.system}.cl-weave
-        (ctx.cl.fromDerivation { drv = cl-json-kit.packages.${ctx.system}.cl-json-kit; })
+        cl-json-kit.packages.${ctx.system}.cl-json-kit
       ];
 
       # Drives BOTH `checks.default` and `apps.test`, from this one number,
