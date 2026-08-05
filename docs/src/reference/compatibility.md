@@ -2,11 +2,14 @@
 
 ## Supported environment
 
-SBCL only, on the one platform the flake builds and CI gates: `x86_64-linux`.
-`aarch64-darwin` was dropped from `flake.nix`'s `systems` list in the
-2026-08-01 revision of `PACKAGE_STANDARD.md` — it was previously verified
-only by the maintainer remembering to run `nix flake check` locally, which is
-not a gate, so declaring it supported promised something nothing enforced.
+SBCL only, on the two platforms `flake.nix`'s `systems` list declares:
+`x86_64-linux`, which CI gates, and `aarch64-darwin`, the development
+machine, which carries no CI gate. `aarch64-darwin` was dropped from that
+list on 2026-08-01 and reverted the following day; `PACKAGE_STANDARD.md`'s
+"systems" section explicitly accepts a declared platform that carries no CI
+gate, so declaring `aarch64-darwin` here promises development-machine
+support, not a gate. `aarch64-linux` and `x86_64-darwin` are nobody's
+verification and are not declared.
 
 The library uses `sb-thread`, `sb-gray`, `sb-ext`, and `sb-debug` directly
 for its locking, bounded output streams, atomics, and backtrace capture, so

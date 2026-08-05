@@ -39,7 +39,7 @@ CL_SOURCE_REGISTRY="/path/to/cl-weave//:/path/to/cl-json-kit//:$(pwd)//:" \
   timeout 120s sbcl --script run-coverage.lisp
 ```
 
-`cl-log-kit/test` requires `cl-weave` 1.0.0 or newer and `cl-json-kit` 1.0.0
+`cl-log-kit/test` requires `cl-weave` 1.3.0 or newer and `cl-json-kit` 1.2.0
 or newer. The flake pins both, so only a hand-managed `CL_SOURCE_REGISTRY`
 can point at an older checkout.
 
@@ -56,8 +56,8 @@ nix develop -c sbcl --script run-coverage.lisp
 
 `run-coverage.lisp` runs the suite through `cl-weave:run-all`'s native
 `:coverage` support and **fails the build if coverage regresses** below the
-floors set in that file — 93.85% expression / 98.7% branch. The suite
-actually reaches 93.95% / 98.77%; the floors sit just below that so ordinary
+floors set in that file — 94.9% expression / 98.45% branch. The suite
+actually reaches 95.03% / 98.51%; the floors sit just below that so ordinary
 platform variance in sb-cover's own accounting cannot trip the gate
 spuriously while a real regression still does.
 

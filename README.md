@@ -51,7 +51,7 @@ with the same case-insensitive canonical name. Continue with
 ```nix
 # flake.nix
 inputs.cl-log-kit = {
-  url = "github:nerima-lisp/cl-log-kit/v2.0.1";
+  url = "github:nerima-lisp/cl-log-kit/v2.1.0";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```

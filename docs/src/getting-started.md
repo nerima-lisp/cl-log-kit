@@ -68,7 +68,7 @@ Pick the path that matches how you use the library.
     `run-tests.lisp` and `run-coverage.lisp` also work
     without Nix — see [Development](project/development.md) for the direct
     `CL_SOURCE_REGISTRY` invocation. `cl-log-kit/test` requires `cl-weave`
-    1.1.0 or newer and `cl-json-kit` 1.0.1 or newer; the flake pins both, so
+    1.3.0 or newer and `cl-json-kit` 1.2.0 or newer; the flake pins both, so
     only a hand-managed `CL_SOURCE_REGISTRY` can point at an older checkout.
 
 ## Runtime Support
