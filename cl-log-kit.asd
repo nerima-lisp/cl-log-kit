@@ -32,6 +32,7 @@
                (:file "macro-utils")
                (:file "conditions")
                (:file "limits")
+               (:file "json-values")
                (:file "snapshot")
                (:file "fields")
                (:file "record")

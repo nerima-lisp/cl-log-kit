@@ -96,3 +96,27 @@ accidentally huge value can never exhaust memory or loop unboundedly."))
 :STRING-LENGTH, or :ARRAY-ELEMENTS.")
   (log-resource-limit-limit "The configured maximum for RESOURCE.")
   (log-resource-limit-actual "The value that exceeded LIMIT."))
+
+(define-condition handler-lifecycle-error (log-kit-error)
+  ((handler :initarg :handler :reader handler-lifecycle-error-handler
+            :documentation "The handler the disallowed operation was attempted on.")
+   (operation :initarg :operation :reader handler-lifecycle-error-operation
+              :documentation "A keyword naming the attempted operation, e.g. :HANDLE,
+:FLUSH, or :CLOSE.")
+   (state :initarg :state :reader handler-lifecycle-error-state
+          :documentation "The handler's lifecycle state that made OPERATION invalid,
+e.g. :ACTIVE-OPERATION when a handler tries to close itself from within its
+own HANDLE-LOG-RECORD/FLUSH-HANDLER method."))
+  (:report (lambda (condition stream)
+             (format stream "Cannot perform ~S on a handler in lifecycle state ~S."
+                     (handler-lifecycle-error-operation condition)
+                     (handler-lifecycle-error-state condition))))
+  (:documentation "Signaled when an operation is attempted on a
+CLOSE-MANAGED-HANDLER outside the lifecycle state that allows it — most
+commonly a handler trying to close itself from inside its own
+HANDLE-LOG-RECORD or FLUSH-HANDLER method, which would deadlock."))
+
+(document-readers
+  (handler-lifecycle-error-handler "The handler the disallowed operation was attempted on.")
+  (handler-lifecycle-error-operation "A keyword naming the attempted operation, e.g. :HANDLE, :FLUSH, or :CLOSE.")
+  (handler-lifecycle-error-state "The handler's lifecycle state that made OPERATION invalid."))
