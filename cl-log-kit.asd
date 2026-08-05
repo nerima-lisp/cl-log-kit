@@ -13,7 +13,7 @@
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
-  :version "2.1.0"
+  :version "2.2.0"
   :homepage "https://github.com/nerima-lisp/cl-log-kit"
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")
@@ -59,7 +59,7 @@
 (asdf:defsystem "cl-log-kit/test"
   :description "Test system for cl-log-kit"
   :long-description "Regression tests for the cl-log-kit public API."
-  :version "2.1.0"
+  :version "2.2.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
