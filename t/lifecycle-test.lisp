@@ -96,28 +96,10 @@
         (expect (not (handler-open-p multi)) :to-be-truthy)
         (expect (not (handler-open-p failing)) :to-be-truthy))))
 
-  (it "retries multi-handler close failures under continue policy"
-    (let ((failed-attempts 0) (later-close-count 0))
-      (let* ((failing (make-function-handler
-                        (lambda (record) (declare (ignore record)))
-                        :close-function (lambda ()
-                                          (incf failed-attempts)
-                                          (when (= failed-attempts 1)
-                                            (error "expected close failure")))))
-             (later (make-function-handler
-                      (lambda (record) (declare (ignore record)))
-                      :close-function (lambda () (incf later-close-count))))
-             (multi (make-multi-handler (list failing later) :error-policy :continue)))
-        (signals error (close-handler multi))
-        (expect (= later-close-count 1) :to-be-truthy)
-        (expect (handler-open-p multi) :to-be-truthy)
-        (expect (handler-open-p failing) :to-be-truthy)
-        (close-handler multi)
-        (expect (= failed-attempts 2) :to-be-truthy)
-        (expect (= later-close-count 1) :to-be-truthy)
-        (expect (not (handler-open-p multi)) :to-be-truthy))))
-
-  (it "retries multi-handler close failures under callback policy"
+  (it-each ((:continue nil)
+            (:callback t))
+      "retries multi-handler close failures under ~A policy~:[~; with an error callback~]"
+      (error-policy expect-callback-p)
     (let ((failed-attempts 0) (later-close-count 0) (callback-count 0))
       (let* ((failing (make-function-handler
                         (lambda (record) (declare (ignore record)))
@@ -128,20 +110,22 @@
              (later (make-function-handler
                       (lambda (record) (declare (ignore record)))
                       :close-function (lambda () (incf later-close-count))))
-             (multi (make-multi-handler
-                      (list failing later)
-                      :error-policy :callback
-                      :error-callback (lambda (operation target condition)
-                                        (declare (ignore operation target condition))
-                                        (incf callback-count)))))
+             (multi (if expect-callback-p
+                        (make-multi-handler
+                          (list failing later)
+                          :error-policy error-policy
+                          :error-callback (lambda (operation target condition)
+                                            (declare (ignore operation target condition))
+                                            (incf callback-count)))
+                        (make-multi-handler (list failing later) :error-policy error-policy))))
         (signals error (close-handler multi))
-        (expect (= callback-count 1) :to-be-truthy)
+        (when expect-callback-p (expect (= callback-count 1) :to-be-truthy))
         (expect (= later-close-count 1) :to-be-truthy)
         (expect (handler-open-p multi) :to-be-truthy)
         (expect (handler-open-p failing) :to-be-truthy)
         (close-handler multi)
         (expect (= failed-attempts 2) :to-be-truthy)
-        (expect (= callback-count 1) :to-be-truthy)
+        (when expect-callback-p (expect (= callback-count 1) :to-be-truthy))
         (expect (= later-close-count 1) :to-be-truthy)
         (expect (not (handler-open-p multi)) :to-be-truthy))))
 
