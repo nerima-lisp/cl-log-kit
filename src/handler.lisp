@@ -93,26 +93,38 @@ immediately instead of deadlocking on itself."
       (incf (%stream-state-active-operations state)))
     state))
 
+(defun %call-with-stream-operation (handler thunk)
+  "Run THUNK with HANDLER's stream as its one argument, under the write lock
+admitted by %BEGIN-STREAM-OPERATION and released via %END-STREAM-OPERATION
+whether THUNK returns normally or unwinds. THUNK is DYNAMIC-EXTENT: a caller
+that passes a literal FLET/LAMBDA argument here -- declaring the matching
+DYNAMIC-EXTENT on its own side, the same technique handler-text.lisp/
+handler-json.lisp already use for their WRITER closures passed into
+%WRITE-HANDLER-RECORD -- lets SBCL stack-allocate it, so this CPS extraction
+adds no allocation to the library's documented zero-alloc write path."
+  (declare (dynamic-extent thunk))
+  (let ((state (%begin-stream-operation handler))
+        (stream (%handler-stream handler)))
+    (unwind-protect (funcall thunk stream)
+      (%end-stream-operation state stream))))
+
 (defun %write-handler-record (handler writer)
   "Call WRITER with HANDLER's stream under the write lock, then flush if
 HANDLER auto-flushes. The lock/unlock pair around WRITER is the only place a
 handler is allowed to touch its stream, which is what keeps concurrent
 writers from interleaving a partial record."
-  (let ((state (%begin-stream-operation handler))
-        (stream (%handler-stream handler)))
-    (unwind-protect
-        (progn
-          (funcall writer stream)
-          (when (%handler-auto-flush-p handler)
-            (finish-output stream)))
-      (%end-stream-operation state stream)))
+  (flet ((%write-and-maybe-flush (stream)
+           (funcall writer stream)
+           (when (%handler-auto-flush-p handler)
+             (finish-output stream))))
+    (declare (dynamic-extent #'%write-and-maybe-flush))
+    (%call-with-stream-operation handler #'%write-and-maybe-flush))
   handler)
 
 (defmethod flush-handler ((handler %stream-handler))
-  (let ((state (%begin-stream-operation handler))
-        (stream (%handler-stream handler)))
-    (unwind-protect (finish-output stream)
-      (%end-stream-operation state stream)))
+  (flet ((%finish-output (stream) (finish-output stream)))
+    (declare (dynamic-extent #'%finish-output))
+    (%call-with-stream-operation handler #'%finish-output))
   handler)
 
 (defmethod close-handler ((handler %stream-handler))
