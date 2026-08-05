@@ -34,6 +34,15 @@
 (require :asdf)
 (require :sb-cover)
 
+;; Mirrors flake.nix's timeoutSeconds=120: that Nix-level wrapper only
+;; guards `checks.default`/`apps.test`, not a direct `sbcl --script
+;; run-coverage.lisp` invocation, so a hung/deadlocked spec must be caught
+;; here too -- the command a contributor runs by hand and the gate CI runs
+;; cannot drift apart. Scoped to the RUN-ALL call below only, not the
+;; ASDF:LOAD-SYSTEM calls, so ordinary cold-compile variance while
+;; instrumenting the library for coverage cannot trip it as a false positive.
+(defparameter *timeout-seconds* 120)
+
 (defun script-directory ()
   (make-pathname :name nil :type nil
                  :defaults (or *load-truename*
@@ -149,22 +158,28 @@
     (asdf:load-system "cl-log-kit/test"))
 
   (handler-case
-      (unless (uiop:symbol-call :cl-weave :run-all
-                                :reporter :spec
-                                :coverage t
-                                ;; Match the manual sb-cover invocation this
-                                ;; replaces: RUN-ALL's own :coverage-reset
-                                ;; default of T would wipe the load-time
-                                ;; coverage credit from the instrumented
-                                ;; ASDF:LOAD-SYSTEM above before a single
-                                ;; test runs.
-                                :coverage-reset nil
-                                :coverage-report-directory coverage-dir
-                                :coverage-include-pathnames (list src-dir)
-                                :coverage-minimum-expression *coverage-minimum-expression*
-                                :coverage-minimum-branch *coverage-minimum-branch*)
+      (unless (sb-ext:with-timeout *timeout-seconds*
+                (uiop:symbol-call :cl-weave :run-all
+                                  :reporter :spec
+                                  :coverage t
+                                  ;; Match the manual sb-cover invocation this
+                                  ;; replaces: RUN-ALL's own :coverage-reset
+                                  ;; default of T would wipe the load-time
+                                  ;; coverage credit from the instrumented
+                                  ;; ASDF:LOAD-SYSTEM above before a single
+                                  ;; test runs.
+                                  :coverage-reset nil
+                                  :coverage-report-directory coverage-dir
+                                  :coverage-include-pathnames (list src-dir)
+                                  :coverage-minimum-expression *coverage-minimum-expression*
+                                  :coverage-minimum-branch *coverage-minimum-branch*))
         (format *error-output* "~&run-coverage.lisp: cl-log-kit test suite failed~%")
         (uiop:quit 1))
+    (sb-ext:timeout ()
+      (format *error-output*
+              "~&run-coverage.lisp: exceeded ~Ds timeout -- likely a hung/deadlocked spec, see t/handler-test.lisp's thread-race specs first~%"
+              *timeout-seconds*)
+      (uiop:quit 1))
     (error (condition)
       (format *error-output* "~&run-coverage.lisp: ~A~%" condition)
       (uiop:quit 1)))
