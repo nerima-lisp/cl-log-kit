@@ -113,17 +113,7 @@ with HANDLER's lock held."
           (when (host-kit:pathname-within-p file directory)
             (host-kit:delete-file-if-exists file)))))))
 
-(defun %call-with-rotating-handler-lock (handler thunk)
-  (cl-concurrent-kit:with-lock-held ((%rotating-handler-lock handler))
-    (funcall thunk)))
-
-(defmacro with-rotating-handler-lock ((handler) &body body)
-  "Run BODY with HANDLER's rotation lock held, serializing rotation checks,
-flushes, and closes on HANDLER against each other. Wraps
-%CALL-WITH-ROTATING-HANDLER-LOCK the way WITH-BOUNDED-OUTPUT wraps its own
-CPS helper, so DEFHANDLE/DEFFLUSH/DEFCLOSE below state the lock once each
-instead of repeating the raw WITH-MUTEX form."
-  `(%call-with-rotating-handler-lock ,handler (lambda () ,@body)))
+(define-handler-lock %call-with-rotating-handler-lock with-rotating-handler-lock %rotating-handler-lock)
 
 (defun %ensure-current-rotation (handler)
   "Return HANDLER's inner stream handler for the current clock bucket,

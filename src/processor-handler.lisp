@@ -56,8 +56,5 @@ earlier one's at the same canonical key."
   (handle-log-record (%processor-handler-target handler)
                      (%apply-log-processors record (%processor-handler-processors handler))))
 
-(defflush processor-handler (handler)
-  (flush-handler (%processor-handler-target handler)))
+(define-delegating-flush-close processor-handler %processor-handler-target)
 
-(defclose processor-handler (handler)
-  (close-handler (%processor-handler-target handler)))

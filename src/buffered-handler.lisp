@@ -66,16 +66,7 @@ empty the buffer. Must be called with HANDLER's lock held."
   (setf (%buffered-handler-buffer handler) nil
         (%buffered-handler-buffer-count handler) 0))
 
-(defun %call-with-buffered-handler-lock (handler thunk)
-  (cl-concurrent-kit:with-lock-held ((%buffered-handler-lock handler))
-    (funcall thunk)))
-
-(defmacro with-buffered-handler-lock ((handler) &body body)
-  "Run BODY with HANDLER's buffer lock held, serializing hold/release/flush
-against each other. Wraps %CALL-WITH-BUFFERED-HANDLER-LOCK the way
-WITH-ROTATING-HANDLER-LOCK wraps its own CPS helper, so DEFHANDLE below
-states the lock once instead of the raw WITH-MUTEX form."
-  `(%call-with-buffered-handler-lock ,handler (lambda () ,@body)))
+(define-handler-lock %call-with-buffered-handler-lock with-buffered-handler-lock %buffered-handler-lock)
 
 (defhandle buffered-handler (handler record)
   (with-buffered-handler-lock (handler)
@@ -94,8 +85,5 @@ states the lock once instead of the raw WITH-MUTEX form."
       (t
        (%buffered-handler-hold handler record)))))
 
-(defflush buffered-handler (handler)
-  (flush-handler (%buffered-handler-target handler)))
+(define-delegating-flush-close buffered-handler %buffered-handler-target)
 
-(defclose buffered-handler (handler)
-  (close-handler (%buffered-handler-target handler)))

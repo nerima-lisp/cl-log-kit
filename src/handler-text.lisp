@@ -123,11 +123,4 @@ rendered log line look different from what it actually contains."
     (write-char #\" output))
   (write-char #\Newline output))
 
-(defmethod handle-log-record ((handler text-handler) record)
-  (check-type record log-record)
-  ;; %WRITE-HANDLER-RECORD calls WRITER synchronously and never retains it, so
-  ;; the closure — which only captures RECORD — has dynamic extent and SBCL
-  ;; stack-allocates it, removing a per-call heap allocation from the hot path.
-  (flet ((writer (stream) (%write-text-record record stream)))
-    (declare (dynamic-extent #'writer))
-    (%write-handler-record handler #'writer)))
+(defstream-handle text-handler (handler record) #'%write-text-record)

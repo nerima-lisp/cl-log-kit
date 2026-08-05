@@ -70,3 +70,48 @@ DEFUN-DEFAULTED. Accepts the same optional method qualifiers (:AROUND,
          (lambda-list (nth lambda-list-position qualifiers-lambda-list-and-body))
          (body (nthcdr (1+ lambda-list-position) qualifiers-lambda-list-and-body)))
     `(defmethod ,name ,@qualifiers ,(%wrap-defaulted-lambda-list lambda-list) ,@body)))
+
+(defmacro define-handler-lock (call-name with-name lock-accessor)
+  "Generate a %CALL-WITH-<X>-LOCK function of (HANDLER THUNK) that runs THUNK
+with HANDLER's lock -- read via LOCK-ACCESSOR -- held via
+CL-CONCURRENT-KIT:WITH-LOCK-HELD, and a WITH-<X>-LOCK ((HANDLER)) &BODY BODY
+macro wrapping it in a lambda. CALL-NAME and WITH-NAME are the exact symbols
+to define, e.g. (DEFINE-HANDLER-LOCK %CALL-WITH-BUFFERED-HANDLER-LOCK
+WITH-BUFFERED-HANDLER-LOCK %BUFFERED-HANDLER-LOCK) reproduces the CPS pair
+BUFFERED-HANDLER and ROTATING-FILE-HANDLER each defined by hand for their
+own lock."
+  `(progn
+     (defun ,call-name (handler thunk)
+       (cl-concurrent-kit:with-lock-held ((,lock-accessor handler))
+         (funcall thunk)))
+     (defmacro ,with-name ((handler) &body body)
+       (list ',call-name handler (list* 'lambda nil body)))))
+
+(defmacro define-delegating-flush-close (class target-accessor)
+  "Generate a FLUSH-HANDLER and a CLOSE-HANDLER method for CLASS that each do
+nothing but forward to (TARGET-ACCESSOR HANDLER): (FLUSH-HANDLER
+(TARGET-ACCESSOR HANDLER)) and (CLOSE-HANDLER (TARGET-ACCESSOR HANDLER)).
+Built on DEFFLUSH/DEFCLOSE, so the generated methods keep the same
+open-while-active/close-once lifecycle guard every other handler method
+gets."
+  `(progn
+     (defflush ,class (handler)
+       (flush-handler (,target-accessor handler)))
+     (defclose ,class (handler)
+       (close-handler (,target-accessor handler)))))
+
+(defmacro defstream-handle (class (handler record) writer &key validator)
+  "Define a HANDLE-LOG-RECORD method for CLASS that type-checks RECORD,
+optionally calls VALIDATOR on RECORD first (for a wire format that needs
+value-level validation before it is safe to write), then writes RECORD
+through a stack-allocated FLET closure passed to %WRITE-HANDLER-RECORD.
+WRITER and VALIDATOR are function designators, e.g. #'%WRITE-TEXT-RECORD and
+#'%VALIDATE-JSON-RECORD. Preserves the DYNAMIC-EXTENT declaration that keeps
+this a zero-allocation hot path: %WRITE-HANDLER-RECORD calls the closure
+synchronously and never retains it."
+  `(defmethod handle-log-record ((,handler ,class) ,record)
+     (check-type ,record log-record)
+     ,@(when validator `((funcall ,validator ,record)))
+     (flet ((writer (stream) (funcall ,writer ,record stream)))
+       (declare (dynamic-extent #'writer))
+       (%write-handler-record ,handler #'writer))))

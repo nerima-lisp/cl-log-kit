@@ -42,12 +42,4 @@ object. Shared by %WRITE-JSON-OBJECT (explicit nested objects) and the record
   (write-char #\} output)
   (write-char #\Newline output))
 
-(defmethod handle-log-record ((handler json-handler) record)
-  (check-type record log-record)
-  (%validate-json-record record)
-  ;; Stack-allocate the writer closure: %WRITE-HANDLER-RECORD invokes it
-  ;; synchronously under the stream lock and never stores it, so its extent is
-  ;; dynamic and the capture of RECORD need not touch the heap.
-  (flet ((writer (stream) (%write-json-record record stream)))
-    (declare (dynamic-extent #'writer))
-    (%write-handler-record handler #'writer)))
+(defstream-handle json-handler (handler record) #'%write-json-record :validator #'%validate-json-record)
