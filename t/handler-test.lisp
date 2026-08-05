@@ -6,20 +6,6 @@
 ;;; races. Mirrors src/handler.lisp.
 (in-package #:cl-log-kit/test)
 
-;;; A gray-streams output stream that runs a callback on FINISH-OUTPUT, used
-;;; to drive the re-entrant close/flush race tests deterministically.
-(defclass finish-callback-stream (sb-gray:fundamental-character-output-stream)
-  ((buffer :initform (make-string-output-stream) :reader finish-callback-buffer)
-    (callback :initarg :callback :initform nil :accessor finish-callback)))
-
-(defmethod sb-gray:stream-write-char ((stream finish-callback-stream) character)
-  (write-char character (finish-callback-buffer stream)))
-
-(defmethod sb-gray:stream-finish-output ((stream finish-callback-stream))
-  (let ((callback (finish-callback stream)))
-    (setf (finish-callback stream) nil)
-    (when callback (funcall callback))))
-
 (describe "stream lifecycle"
   (it "built-in handlers reject input-only streams"
     (signals type-error
@@ -66,151 +52,125 @@
               :to-be-truthy)))
 
   (it "concurrent close calls on the same handler wait for stream closure"
-    (let* ((entered (sb-thread:make-semaphore :count 0))
-           (release (sb-thread:make-semaphore :count 0))
-           (second-returned (sb-thread:make-semaphore :count 0))
-           (stream (make-instance 'finish-callback-stream))
-           (handler (make-instance 'json-handler :stream stream :owns-stream t))
-           (state (log-kit::%handler-stream-state handler))
-           writer first-closer second-closer)
-      (setf (finish-callback stream)
-            (lambda ()
-              (sb-thread:signal-semaphore entered)
-              (sb-thread:wait-on-semaphore release)))
-      (setf writer
-            (sb-thread:make-thread
-              (lambda () (handle-log-record handler (make-test-record :message "in-flight")) t)))
-      (expect (sb-thread:wait-on-semaphore entered :timeout 1) :to-be-truthy)
-      (setf first-closer (sb-thread:make-thread (lambda () (close-handler handler) t)))
-      (cl-concurrent-kit:with-lock-held ((log-kit::%stream-state-lock state))
-        (loop until (log-kit::%stream-state-closing-p state)
-              do (cl-concurrent-kit:condition-wait (log-kit::%stream-state-waitqueue state)
-                                                   (log-kit::%stream-state-lock state)
-                                                   :timeout 1)))
-      (setf second-closer
-            (sb-thread:make-thread
-              (lambda ()
-                (close-handler handler)
-                (sb-thread:signal-semaphore second-returned)
-                t)))
-      (expect (sb-thread:wait-on-semaphore second-returned :timeout 0.05) :to-be nil)
-      (sb-thread:signal-semaphore release)
-      (expect (sb-thread:join-thread writer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:join-thread first-closer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:join-thread second-closer :timeout 1 :default nil) :to-be-truthy)
-      (expect (open-stream-p stream) :to-be nil)))
+    (multiple-value-bind (stream entered release) (make-blocking-stream)
+      (let* ((second-returned (sb-thread:make-semaphore :count 0))
+             (handler (make-instance 'json-handler :stream stream :owns-stream t))
+             (state (log-kit::%handler-stream-state handler))
+             (writer (spawn-and-await-entry
+                      entered
+                      (lambda () (handle-log-record handler (make-test-record :message "in-flight")))))
+             first-closer second-closer)
+        (setf first-closer (sb-thread:make-thread (lambda () (close-handler handler) t)))
+        (cl-concurrent-kit:with-lock-held ((log-kit::%stream-state-lock state))
+          (loop until (log-kit::%stream-state-closing-p state)
+                do (cl-concurrent-kit:condition-wait (log-kit::%stream-state-waitqueue state)
+                                                     (log-kit::%stream-state-lock state)
+                                                     :timeout 1)))
+        (setf second-closer
+              (sb-thread:make-thread
+                (lambda ()
+                  (close-handler handler)
+                  (sb-thread:signal-semaphore second-returned)
+                  t)))
+        (expect (sb-thread:wait-on-semaphore second-returned :timeout 0.05) :to-be nil)
+        (sb-thread:signal-semaphore release)
+        (expect (sb-thread:join-thread writer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:join-thread first-closer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:join-thread second-closer :timeout 1 :default nil) :to-be-truthy)
+        (expect (open-stream-p stream) :to-be nil))))
 
   (it "owner close blocks peer writes and waits for in-flight flush"
-    (let* ((entered (sb-thread:make-semaphore :count 0))
-           (release (sb-thread:make-semaphore :count 0))
-           (close-returned (sb-thread:make-semaphore :count 0))
-           (stream (make-instance 'finish-callback-stream))
-           (owner (make-instance 'json-handler :stream stream :owns-stream t))
-           (peer (make-instance 'json-handler :stream stream))
-           (state (log-kit::%handler-stream-state owner))
-           writer closer)
-      (setf (finish-callback stream)
-            (lambda ()
-              (sb-thread:signal-semaphore entered)
-              (sb-thread:wait-on-semaphore release)))
-      (setf writer
-            (sb-thread:make-thread
-              (lambda () (handle-log-record peer (make-test-record :message "in-flight")) t)))
-      (expect (sb-thread:wait-on-semaphore entered :timeout 1) :to-be-truthy)
-      (setf closer
-            (sb-thread:make-thread
-              (lambda ()
-                (close-handler owner)
-                (sb-thread:signal-semaphore close-returned)
-                t)))
-      (cl-concurrent-kit:with-lock-held ((log-kit::%stream-state-lock state))
-        (unless (log-kit::%stream-state-closing-p state)
-          (cl-concurrent-kit:condition-wait (log-kit::%stream-state-waitqueue state)
-                                            (log-kit::%stream-state-lock state)
-                                            :timeout 1))
-        (expect (log-kit::%stream-state-closing-p state) :to-be-truthy))
-      (signals stream-error (handle-log-record peer (make-test-record :message "rejected")))
-      (expect (sb-thread:wait-on-semaphore close-returned :timeout 0.05) :to-be nil)
-      (sb-thread:signal-semaphore release)
-      (expect (sb-thread:join-thread writer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:join-thread closer :timeout 1 :default nil) :to-be-truthy)
-      (expect (open-stream-p stream) :to-be nil)
-      (signals stream-error (handle-log-record peer (make-test-record :message "closed")))))
+    (multiple-value-bind (stream entered release) (make-blocking-stream)
+      (let* ((close-returned (sb-thread:make-semaphore :count 0))
+             (owner (make-instance 'json-handler :stream stream :owns-stream t))
+             (peer (make-instance 'json-handler :stream stream))
+             (state (log-kit::%handler-stream-state owner))
+             (writer (spawn-and-await-entry
+                      entered
+                      (lambda () (handle-log-record peer (make-test-record :message "in-flight")))))
+             closer)
+        (setf closer
+              (sb-thread:make-thread
+                (lambda ()
+                  (close-handler owner)
+                  (sb-thread:signal-semaphore close-returned)
+                  t)))
+        (cl-concurrent-kit:with-lock-held ((log-kit::%stream-state-lock state))
+          (unless (log-kit::%stream-state-closing-p state)
+            (cl-concurrent-kit:condition-wait (log-kit::%stream-state-waitqueue state)
+                                              (log-kit::%stream-state-lock state)
+                                              :timeout 1))
+          (expect (log-kit::%stream-state-closing-p state) :to-be-truthy))
+        (signals stream-error (handle-log-record peer (make-test-record :message "rejected")))
+        (expect (sb-thread:wait-on-semaphore close-returned :timeout 0.05) :to-be nil)
+        (sb-thread:signal-semaphore release)
+        (expect (sb-thread:join-thread writer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:join-thread closer :timeout 1 :default nil) :to-be-truthy)
+        (expect (open-stream-p stream) :to-be nil)
+        (signals stream-error (handle-log-record peer (make-test-record :message "closed"))))))
 
   (it "a second owner's close waits for the first owner's in-flight physical close, twice"
     ;; Both handlers own the stream: only an owning handler's CLOSE-HANDLER
     ;; reaches the closing-p wait branches at all (a non-owning handler
     ;; always takes the immediate "not owner" clause instead).
-    (let* ((entered (sb-thread:make-semaphore :count 0))
-           (release (sb-thread:make-semaphore :count 0))
-           (second-owner-close-returned (sb-thread:make-semaphore :count 0))
-           (third-close-returned (sb-thread:make-semaphore :count 0))
-           (stream (make-instance 'finish-callback-stream))
-           (first-owner (make-instance 'json-handler :stream stream :owns-stream t))
-           (second-owner (make-instance 'json-handler :stream stream :owns-stream t))
-           (state (log-kit::%handler-stream-state first-owner))
-           first-closer second-closer third-closer)
-      (setf (finish-callback stream)
-            (lambda ()
-              (sb-thread:signal-semaphore entered)
-              (sb-thread:wait-on-semaphore release)))
-      (setf first-closer (sb-thread:make-thread (lambda () (close-handler first-owner) t)))
-      (expect (sb-thread:wait-on-semaphore entered :timeout 1) :to-be-truthy)
-      ;; First close on SECOND-OWNER: never closed before, but the stream is
-      ;; mid-finalization owned by a different thread, so it must wait
-      ;; rather than return early or physically close a second time.
-      (setf second-closer
-            (sb-thread:make-thread
-              (lambda ()
-                (close-handler second-owner)
-                (sb-thread:signal-semaphore second-owner-close-returned)
-                t)))
-      (cl-concurrent-kit:with-lock-held ((log-kit::%stream-state-lock state))
-        (loop until (log-kit::%handler-closed-p second-owner)
-              do (cl-concurrent-kit:condition-wait (log-kit::%stream-state-waitqueue state)
-                                                   (log-kit::%stream-state-lock state)
-                                                   :timeout 1)))
-      (expect (sb-thread:wait-on-semaphore second-owner-close-returned :timeout 0.05) :to-be nil)
-      ;; Second close on SECOND-OWNER: already marked closed by itself, and
-      ;; the stream is still mid-finalization, so this call must also wait.
-      (setf third-closer
-            (sb-thread:make-thread
-              (lambda ()
-                (close-handler second-owner)
-                (sb-thread:signal-semaphore third-close-returned)
-                t)))
-      (expect (sb-thread:wait-on-semaphore third-close-returned :timeout 0.05) :to-be nil)
-      (sb-thread:signal-semaphore release)
-      (expect (sb-thread:join-thread first-closer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:join-thread second-closer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:join-thread third-closer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:wait-on-semaphore second-owner-close-returned :timeout 1) :to-be-truthy)
-      (expect (sb-thread:wait-on-semaphore third-close-returned :timeout 1) :to-be-truthy)
-      (expect (open-stream-p stream) :to-be nil)))
+    (multiple-value-bind (stream entered release) (make-blocking-stream)
+      (let* ((second-owner-close-returned (sb-thread:make-semaphore :count 0))
+             (third-close-returned (sb-thread:make-semaphore :count 0))
+             (first-owner (make-instance 'json-handler :stream stream :owns-stream t))
+             (second-owner (make-instance 'json-handler :stream stream :owns-stream t))
+             (state (log-kit::%handler-stream-state first-owner))
+             (first-closer (spawn-and-await-entry
+                            entered
+                            (lambda () (close-handler first-owner))))
+             second-closer third-closer)
+        ;; First close on SECOND-OWNER: never closed before, but the stream is
+        ;; mid-finalization owned by a different thread, so it must wait
+        ;; rather than return early or physically close a second time.
+        (setf second-closer
+              (sb-thread:make-thread
+                (lambda ()
+                  (close-handler second-owner)
+                  (sb-thread:signal-semaphore second-owner-close-returned)
+                  t)))
+        (cl-concurrent-kit:with-lock-held ((log-kit::%stream-state-lock state))
+          (loop until (log-kit::%handler-closed-p second-owner)
+                do (cl-concurrent-kit:condition-wait (log-kit::%stream-state-waitqueue state)
+                                                     (log-kit::%stream-state-lock state)
+                                                     :timeout 1)))
+        (expect (sb-thread:wait-on-semaphore second-owner-close-returned :timeout 0.05) :to-be nil)
+        ;; Second close on SECOND-OWNER: already marked closed by itself, and
+        ;; the stream is still mid-finalization, so this call must also wait.
+        (setf third-closer
+              (sb-thread:make-thread
+                (lambda ()
+                  (close-handler second-owner)
+                  (sb-thread:signal-semaphore third-close-returned)
+                  t)))
+        (expect (sb-thread:wait-on-semaphore third-close-returned :timeout 0.05) :to-be nil)
+        (sb-thread:signal-semaphore release)
+        (expect (sb-thread:join-thread first-closer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:join-thread second-closer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:join-thread third-closer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:wait-on-semaphore second-owner-close-returned :timeout 1) :to-be-truthy)
+        (expect (sb-thread:wait-on-semaphore third-close-returned :timeout 1) :to-be-truthy)
+        (expect (open-stream-p stream) :to-be nil))))
 
   (it "auto-flush write excludes a peer explicit flush"
-    (let* ((entered (sb-thread:make-semaphore :count 0))
-           (release (sb-thread:make-semaphore :count 0))
-           (second-entered (sb-thread:make-semaphore :count 0))
-           (stream (make-instance 'finish-callback-stream))
-           (writer-handler (make-instance 'json-handler :stream stream))
-           (peer (make-instance 'json-handler :stream stream))
-           writer flusher)
-      (setf (finish-callback stream)
-            (lambda ()
-              (sb-thread:signal-semaphore entered)
-              (sb-thread:wait-on-semaphore release)))
-      (setf writer
-            (sb-thread:make-thread
-              (lambda () (handle-log-record writer-handler (make-test-record :message "write")) t)))
-      (expect (sb-thread:wait-on-semaphore entered :timeout 1) :to-be-truthy)
-      (setf (finish-callback stream) (lambda () (sb-thread:signal-semaphore second-entered)))
-      (setf flusher (sb-thread:make-thread (lambda () (flush-handler peer) t)))
-      (expect (sb-thread:wait-on-semaphore second-entered :timeout 0.05) :to-be nil)
-      (sb-thread:signal-semaphore release)
-      (expect (sb-thread:join-thread writer :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:join-thread flusher :timeout 1 :default nil) :to-be-truthy)
-      (expect (sb-thread:wait-on-semaphore second-entered :timeout 1) :to-be-truthy)))
+    (multiple-value-bind (stream entered release) (make-blocking-stream)
+      (let* ((second-entered (sb-thread:make-semaphore :count 0))
+             (writer-handler (make-instance 'json-handler :stream stream))
+             (peer (make-instance 'json-handler :stream stream))
+             (writer (spawn-and-await-entry
+                      entered
+                      (lambda () (handle-log-record writer-handler (make-test-record :message "write")))))
+             flusher)
+        (setf (finish-callback stream) (lambda () (sb-thread:signal-semaphore second-entered)))
+        (setf flusher (sb-thread:make-thread (lambda () (flush-handler peer) t)))
+        (expect (sb-thread:wait-on-semaphore second-entered :timeout 0.05) :to-be nil)
+        (sb-thread:signal-semaphore release)
+        (expect (sb-thread:join-thread writer :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:join-thread flusher :timeout 1 :default nil) :to-be-truthy)
+        (expect (sb-thread:wait-on-semaphore second-entered :timeout 1) :to-be-truthy))))
 
   (it "a second reentrant close from the write-operation owner does not wait on itself"
     ;; The first reentrant CLOSE-HANDLER call (still on the write's owning

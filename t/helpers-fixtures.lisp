@@ -67,3 +67,38 @@
 (defun counting-logger (&rest logger-args)
   (let ((handler (make-instance 'counting-handler)))
     (values (apply #'make-logger :handler handler logger-args) handler)))
+
+;;; A gray-streams output stream that runs a callback on FINISH-OUTPUT, used
+;;; to drive the concurrent close/flush/write race tests deterministically.
+(defclass finish-callback-stream (sb-gray:fundamental-character-output-stream)
+  ((buffer :initform (make-string-output-stream) :reader finish-callback-buffer)
+    (callback :initarg :callback :initform nil :accessor finish-callback)))
+
+(defmethod sb-gray:stream-write-char ((stream finish-callback-stream) character)
+  (write-char character (finish-callback-buffer stream)))
+
+(defmethod sb-gray:stream-finish-output ((stream finish-callback-stream))
+  (let ((callback (finish-callback stream)))
+    (setf (finish-callback stream) nil)
+    (when callback (funcall callback))))
+
+;;; A fresh FINISH-CALLBACK-STREAM whose finish-callback signals ENTERED and
+;;; then blocks the calling thread on RELEASE, for driving a close/flush/
+;;; write race deterministically. Returns (values stream entered release).
+(defun make-blocking-stream ()
+  (let* ((entered (sb-thread:make-semaphore :count 0))
+         (release (sb-thread:make-semaphore :count 0))
+         (stream (make-instance 'finish-callback-stream)))
+    (setf (finish-callback stream)
+          (lambda ()
+            (sb-thread:signal-semaphore entered)
+            (sb-thread:wait-on-semaphore release)))
+    (values stream entered release)))
+
+;;; Run THUNK on its own thread and wait for it to signal ENTERED, i.e. to
+;;; have reached the blocking finish-callback installed by
+;;; MAKE-BLOCKING-STREAM. Returns the thread.
+(defun spawn-and-await-entry (entered thunk)
+  (let ((thread (sb-thread:make-thread (lambda () (funcall thunk) t))))
+    (expect (sb-thread:wait-on-semaphore entered :timeout 1) :to-be-truthy)
+    thread))

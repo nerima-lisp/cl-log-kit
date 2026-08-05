@@ -16,8 +16,7 @@ true of it. See MAKE-FILTER-HANDLER."))
 
 (defmethod initialize-instance :after ((instance filter-handler) &key target predicate)
   (declare (ignore instance))
-  (check-type target handler)
-  (check-type predicate function))
+  (check-types (target handler) (predicate function)))
 
 (defun make-filter-handler (target predicate)
   "Build a handler that forwards a record to TARGET only when (FUNCALL
@@ -28,11 +27,7 @@ PREDICATE RECORD) is true."
   (when (funcall (%filter-handler-predicate handler) record)
     (handle-log-record (%filter-handler-target handler) record)))
 
-(defflush filter-handler (handler)
-  (flush-handler (%filter-handler-target handler)))
-
-(defclose filter-handler (handler)
-  (close-handler (%filter-handler-target handler)))
+(define-delegating-flush-close filter-handler %filter-handler-target)
 
 (defclass function-handler (close-managed-handler)
   ((handle-function :initarg :handle-function :reader %function-handler-handle)

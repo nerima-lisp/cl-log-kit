@@ -13,7 +13,7 @@
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
-  :version "2.1.0"
+  :version "2.2.0"
   :homepage "https://github.com/nerima-lisp/cl-log-kit"
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")
@@ -22,9 +22,9 @@
   ;; stale system ASDF fails fast with a clear version error instead of a
   ;; confusing missing-function error deep in the load.
   :depends-on ((:version "asdf" "3.3.1")
-               (:version "cl-date-kit" "0.2.0")
-               (:version "cl-concurrent-kit" "0.1.0")
-               (:version "cl-host-kit" "0.2.0"))
+               (:version "cl-date-kit" "0.3.0")
+               (:version "cl-concurrent-kit" "0.5.0")
+               (:version "cl-host-kit" "0.3.1"))
   :pathname "src"
   :serial t
   :components ((:file "package")
@@ -32,6 +32,7 @@
                (:file "macro-utils")
                (:file "conditions")
                (:file "limits")
+               (:file "json-values")
                (:file "snapshot")
                (:file "fields")
                (:file "record")
@@ -58,7 +59,7 @@
 (asdf:defsystem "cl-log-kit/test"
   :description "Test system for cl-log-kit"
   :long-description "Regression tests for the cl-log-kit public API."
-  :version "2.1.0"
+  :version "2.2.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -66,14 +67,14 @@
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")
   :depends-on ("cl-log-kit"
-               (:version "cl-weave" "1.1.0")
+               (:version "cl-weave" "1.3.0")
                ;; Test-only: an independent nerima-lisp JSON parser used to
                ;; assert json-handler output parses back to the expected
                ;; structure, not just contains the right substrings. Its
                ;; writer is not zero-allocation and uses its own value model,
                ;; so it stays a test-only round-trip oracle rather than the
                ;; runtime json-handler's writer.
-               (:version "cl-json-kit" "1.0.1"))
+               (:version "cl-json-kit" "1.2.0"))
   :pathname "t"
   :serial t
   :components ((:file "package")

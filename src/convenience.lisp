@@ -14,8 +14,7 @@
 
 (defun log-enabled-p (logger level)
   "True when LEVEL passes LOGGER's own minimum level filter."
-  (check-type logger logger)
-  (check-type level integer)
+  (check-types (logger logger) (level integer))
   (>= level (logger-level logger)))
 
 (defun %emit-log-unchecked (logger level message fields-plist)

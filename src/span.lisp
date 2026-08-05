@@ -44,9 +44,7 @@ a child *LOG-SPAN-ID*/*LOG-CONTEXT-FIELDS*, then always emit a matching :END
 record classifying the exit as :SUCCESS, :ERROR, or :NONLOCAL-EXIT. This is
 the continuation the WITH-LOG-SPAN macro installs as its body; the macro
 itself only decides whether a span is worth starting at all."
-  (check-type name string)
-  (check-type clock function)
-  (check-type id-source function)
+  (check-types (name string) (clock function) (id-source function))
   (let* ((span-id (funcall id-source))
          (parent-span-id *log-span-id*)
          (started-at (funcall clock))
@@ -54,9 +52,7 @@ itself only decides whether a span is worth starting at all."
          (primary-condition nil)
          (context-fields (append (list :span-id span-id)
                                  (when parent-span-id (list :parent-span-id parent-span-id)))))
-    (check-type span-id string)
-    (check-type parent-span-id (or null string))
-    (check-type started-at real)
+    (check-types (span-id string) (parent-span-id (or null string)) (started-at real))
     (%emit-log-unchecked logger level name (%span-fields span-id parent-span-id :start fields))
     (let ((*log-span-id* span-id)
           (*log-context-fields* (%merge-field-alists (plist-to-alist context-fields)

@@ -4,6 +4,13 @@
 ;;; loads the test system, and runs the suite.
 (require :asdf)
 
+;; Mirrors flake.nix's timeoutSeconds=120: that Nix-level wrapper only
+;; guards `checks.default`/`apps.test`, not a direct `sbcl --script
+;; run-tests.lisp` invocation, so a hung/deadlocked spec must be caught here
+;; too -- the command a contributor runs by hand and the gate CI runs cannot
+;; drift apart.
+(defparameter *timeout-seconds* 120)
+
 (defun script-directory ()
   (make-pathname :name nil :type nil
                  :defaults (or *load-truename*
@@ -22,5 +29,12 @@
 
 (let ((root (script-directory)))
   (configure-source-registry root)
-  (asdf:test-system "cl-log-kit")
+  (handler-case
+      (sb-ext:with-timeout *timeout-seconds*
+        (asdf:test-system "cl-log-kit"))
+    (sb-ext:timeout ()
+      (format *error-output*
+              "~&run-tests.lisp: exceeded ~Ds timeout -- likely a hung/deadlocked spec, see t/handler-test.lisp's thread-race specs first~%"
+              *timeout-seconds*)
+      (uiop:quit 1)))
   (uiop:quit 0))

@@ -64,8 +64,7 @@ LIMIT, returning the captured string. See %CALL-WITH-BOUNDED-OUTPUT."
 
 (defun-defaulted %safe-condition-message (condition limit &key (render-report nil)
                                           (resource :condition-message-length))
-  (check-type condition condition)
-  (check-type render-report boolean)
+  (check-types (condition condition) (render-report boolean))
   (%check-condition-output-limit resource limit)
   (if (not render-report)
       (%condition-type-message condition limit)
@@ -94,8 +93,7 @@ truncated as-is, any other object is rendered like a condition message."
       (%capture-condition-backtrace limit)))
 
 (defun %condition-fields (condition condition-message backtrace capture-backtrace backtrace-limit)
-  (check-type condition condition)
-  (check-type capture-backtrace boolean)
+  (check-types (condition condition) (capture-backtrace boolean))
   (%check-condition-output-limit :condition-backtrace-length backtrace-limit)
   (let ((fields (list :condition-type (string-downcase (string (type-of condition)))
                       :condition-message condition-message)))

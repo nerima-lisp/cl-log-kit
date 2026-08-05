@@ -83,7 +83,7 @@ no adapter layer in between.
 - **A CI gate that runs the exact suite a contributor runs locally.**
   `nix flake check` drives the SBCL suite, the formatting gate, and this
   site's `--strict` build; a separate coverage gate fails the build on any
-  expression or branch coverage regression, currently 93.95% / 98.77%. See
+  expression or branch coverage regression, currently 95.03% / 98.51%. See
   [Development](project/development.md).
 - **Concurrency-safe by construction, not by convention.** Every handler that
   owns a stream serializes writes and closes through a single reentrant lock,
@@ -101,7 +101,7 @@ no adapter layer in between.
 
 ## Status
 
-Version 2.0.1. `cl-log-kit` is a small, stable surface — see the
+Version 2.1.0. `cl-log-kit` is a small, stable surface — see the
 [API Reference](reference/api.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
 suite documented in [Development](project/development.md):

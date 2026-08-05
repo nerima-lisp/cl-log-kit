@@ -34,6 +34,15 @@
 (require :asdf)
 (require :sb-cover)
 
+;; Mirrors flake.nix's timeoutSeconds=120: that Nix-level wrapper only
+;; guards `checks.default`/`apps.test`, not a direct `sbcl --script
+;; run-coverage.lisp` invocation, so a hung/deadlocked spec must be caught
+;; here too -- the command a contributor runs by hand and the gate CI runs
+;; cannot drift apart. Scoped to the RUN-ALL call below only, not the
+;; ASDF:LOAD-SYSTEM calls, so ordinary cold-compile variance while
+;; instrumenting the library for coverage cannot trip it as a false positive.
+(defparameter *timeout-seconds* 120)
+
 (defun script-directory ()
   (make-pathname :name nil :type nil
                  :defaults (or *load-truename*
@@ -78,17 +87,27 @@
 ;;      while the total rises. Documenting the public surface is worth more
 ;;      than the metric it costs.
 ;;
-;; Two specific DEFMACRO/table-dispatch conversions were evaluated during the
-;; 2026 modernization pass and deliberately left as plain functions, for the
-;; same reason as (1) above plus one more: both sit on a DECLARE'd hot path.
+;; HANDLER.LISP's %BEGIN-STREAM-OPERATION/%END-STREAM-OPERATION pair around
+;; %WRITE-HANDLER-RECORD *was* extracted into a %CALL-WITH-STREAM-OPERATION
+;; helper (WRITER is a continuation, so this is CPS in substance), but
+;; deliberately as a plain DEFUN rather than a %CALL-WITH-.../WITH-... macro
+;; pair: a macro body would move it behind (1) above's coverage blind spot,
+;; and the original rejection worried a wrapper would add a closure
+;; allocation to the library's documented zero-alloc write path. Both
+;; concerns are avoided the same way handler-text.lisp/handler-json.lisp's
+;; own WRITER closures already are: %CALL-WITH-STREAM-OPERATION declares its
+;; THUNK parameter DYNAMIC-EXTENT, and %WRITE-HANDLER-RECORD/FLUSH-HANDLER
+;; each pass it a literal FLET closure with a matching DYNAMIC-EXTENT
+;; declaration of their own, letting SBCL stack-allocate it. Confirmed by
+;; direct measurement, not assumption: (SB-EXT:GET-BYTES-CONSED) around
+;; 200,000 calls each of HANDLE-LOG-RECORD (text and JSON) and FLUSH-HANDLER
+;; measured exactly 0 bytes/call, and every allocation-bound spec in
+;; t/performance-test.lisp continued to pass across repeated runs.
 ;;
-;;   - HANDLER.LISP's %BEGIN-STREAM-OPERATION/%END-STREAM-OPERATION pair
-;;     around %WRITE-HANDLER-RECORD is already CPS in substance (WRITER is a
-;;     continuation); wrapping it in one more %CALL-WITH-.../WITH-... macro
-;;     pair for house-style symmetry would move it behind (1)'s coverage
-;;     blind spot and add a closure allocation to the library's documented
-;;     zero-alloc write path (see handler-text.lisp/handler-json.lisp's
-;;     DYNAMIC-EXTENT closures) for no behavioral benefit.
+;; One specific DEFMACRO/table-dispatch conversion was evaluated during the
+;; 2026 modernization pass and deliberately left as a plain function, for the
+;; same reason as (1) above plus one more: it sits on a DECLARE'd hot path.
+;;
 ;;   - SNAPSHOT.LISP's %SNAPSHOT-FIELD-VALUE dispatches on value type with a
 ;;     compile-time TYPECASE rather than a runtime type->handler table. The
 ;;     function is declared (SPEED 3) as part of the library's documented
@@ -96,16 +115,19 @@
 ;;     runtime indirection to satisfy a "data vs. logic" preference this
 ;;     function's performance contract does not have room for.
 ;;
-;; If a future pass reconsiders either, re-run the multi-threaded specs in
+;; If a future pass reconsiders it, re-run the multi-threaded specs in
 ;; t/handler-test.lisp and the allocation-bound specs in t/performance-test.lisp
 ;; repeatedly first — both files exist specifically to catch what a single
 ;; run cannot.
 ;;
-;; The true aggregate after the 2026 modernization pass is 94.98% expression /
-;; 98.51% branch. Expression rose (dead sb-thread call sites removed, the
-;; DOCUMENT-READERS consolidation cut sixteen near-duplicate SETF forms to
-;; one macro invocation each); branch fell slightly, for two reasons rather
-;; than one regression:
+;; The true aggregate after the 2026 modernization pass is 95.03% expression /
+;; 98.51% branch (2890/3041 expressions, 331/336 branches, per
+;; coverage/cover-index.html). Expression rose across the pass (dead
+;; sb-thread call sites removed, the DOCUMENT-READERS consolidation cut
+;; sixteen near-duplicate SETF forms to one macro invocation each, the
+;; MACRO-UTILS.LISP codegen macros added in the 2026 pass emit ordinary
+;; measurable functions/methods per the discipline above); branch fell
+;; slightly, for two reasons rather than one regression:
 ;;
 ;;   1. HOST-KIT:PATHNAME-WITHIN-P's negative branch in
 ;;      %PURGE-OLD-LOG-FILES (rotating-file-handler.lisp) is new, deliberate
@@ -128,6 +150,23 @@
 ;; These floors sit just below the new true aggregate so ordinary
 ;; floating-point/platform variance in sb-cover's own accounting cannot trip
 ;; the gate spuriously, while still catching any real regression.
+;;
+;; An adversarial re-check of every uncovered/partial span (not just this
+;; comment's own categories) found two more legitimately-permanent-gap
+;; categories -- load-time-executed forms (DOCUMENT-READERS call sites,
+;; DEFPARAMETER/DEFVAR/DEFGLOBAL inits) that sb-cover cannot observe running
+;; even though they demonstrably do, and branches proven unreachable by
+;; tracing the call graph rather than by insufficient testing -- plus one
+;; genuinely closeable gap (SNAPSHOT.LISP's %MAKE-SNAPSHOT-CONTEXT fallback,
+;; now covered by a direct-API test in t/coverage-test.lisp). It also wrote,
+;; then deliberately reverted, a test for this file's own
+;; HOST-KIT:PATHNAME-WITHIN-P branch (item 1 above) that monkey-patched
+;; HOST-KIT:DIRECTORY-FILES via (SETF (FDEFINITION ...)) to fabricate the
+;; exact scenario this comment already says cannot occur through the public
+;; API -- closing the metric that way is a test-integrity smell, not a real
+;; regression check, so that branch stays uncovered on purpose. See Serena
+;; memory architecture/logging-hardening's "Coverage-gap taxonomy" section
+;; for the full per-span evidence.
 (defparameter *coverage-minimum-expression* 94.9)
 (defparameter *coverage-minimum-branch* 98.45)
 
@@ -149,22 +188,28 @@
     (asdf:load-system "cl-log-kit/test"))
 
   (handler-case
-      (unless (uiop:symbol-call :cl-weave :run-all
-                                :reporter :spec
-                                :coverage t
-                                ;; Match the manual sb-cover invocation this
-                                ;; replaces: RUN-ALL's own :coverage-reset
-                                ;; default of T would wipe the load-time
-                                ;; coverage credit from the instrumented
-                                ;; ASDF:LOAD-SYSTEM above before a single
-                                ;; test runs.
-                                :coverage-reset nil
-                                :coverage-report-directory coverage-dir
-                                :coverage-include-pathnames (list src-dir)
-                                :coverage-minimum-expression *coverage-minimum-expression*
-                                :coverage-minimum-branch *coverage-minimum-branch*)
+      (unless (sb-ext:with-timeout *timeout-seconds*
+                (uiop:symbol-call :cl-weave :run-all
+                                  :reporter :spec
+                                  :coverage t
+                                  ;; Match the manual sb-cover invocation this
+                                  ;; replaces: RUN-ALL's own :coverage-reset
+                                  ;; default of T would wipe the load-time
+                                  ;; coverage credit from the instrumented
+                                  ;; ASDF:LOAD-SYSTEM above before a single
+                                  ;; test runs.
+                                  :coverage-reset nil
+                                  :coverage-report-directory coverage-dir
+                                  :coverage-include-pathnames (list src-dir)
+                                  :coverage-minimum-expression *coverage-minimum-expression*
+                                  :coverage-minimum-branch *coverage-minimum-branch*))
         (format *error-output* "~&run-coverage.lisp: cl-log-kit test suite failed~%")
         (uiop:quit 1))
+    (sb-ext:timeout ()
+      (format *error-output*
+              "~&run-coverage.lisp: exceeded ~Ds timeout -- likely a hung/deadlocked spec, see t/handler-test.lisp's thread-race specs first~%"
+              *timeout-seconds*)
+      (uiop:quit 1))
     (error (condition)
       (format *error-output* "~&run-coverage.lisp: ~A~%" condition)
       (uiop:quit 1)))
