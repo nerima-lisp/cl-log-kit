@@ -1,11 +1,3 @@
-;;;; src/simple-handlers.lisp
-;;;
-;;; The single-child/no-child handlers built on the lifecycle.lisp backbone:
-;;; FILTER-HANDLER (predicate gate), FUNCTION-HANDLER (adapt a closure), and
-;;; NULL-HANDLER. Also the stream-handler constructor table
-;;; (DEFINE-STREAM-HANDLER-CONSTRUCTORS), HANDLER-OPEN-P introspection, and
-;;; WITH-HANDLER. MULTI-HANDLER, the fan-out composite, lives in
-;;; handlers.lisp alongside FLUSH-LOGGER.
 (in-package #:log-kit)
 
 (defclass filter-handler (close-managed-handler)

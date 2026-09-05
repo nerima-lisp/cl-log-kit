@@ -1,9 +1,3 @@
-;;;; src/condition-logging.lisp
-;;;
-;;; LOG-CONDITION and its machinery: rendering a condition (and optionally its
-;;; backtrace) into log fields under strict output bounds. The bounded output
-;;; stream caps every rendered string via a CPS helper so a hostile or huge
-;;; condition report can never exhaust memory.
 (in-package #:log-kit)
 
 (defun %check-condition-output-limit (resource limit)

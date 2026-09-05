@@ -1,9 +1,3 @@
-;;;; t/property-test.lisp
-;;;
-;;; Property-based invariants: statements that must hold for every generated
-;;; input, not just the hand-picked examples in the other spec files. These
-;;; pin down the algebra of levels, the text encoder's one-line guarantee, and
-;;; the field snapshot's isolation and de-duplication.
 (in-package #:cl-log-kit/test)
 
 (describe "invariants"
@@ -25,9 +19,7 @@
       (when (level< a b)
         (expect (level<= a b) :to-be-truthy)))
 
-    ;; Mutation testing: every one-operator mutant of the underlying
-    ;; comparison must be killed by comparing against the real level</level<=
-    ;; result, proving the wrapper adds no drift from plain integer <, <=.
+    ;; Compare with primitive operations so mutation testing covers wrappers.
     (it "kills every mutant of the underlying integer comparisons"
       (assert-mutation-score
         (run-mutations '(< 2 5)
@@ -49,11 +41,7 @@
       (let ((output (render-through 'text-handler (make-test-record :message message))))
         (expect output :to-be-single-line)))
 
-    ;; The text handler is *total* by design — it renders any field value as a
-    ;; safe single line (numbers, characters, symbols bounded; every other
-    ;; object the placeholder "#<object>") and must never signal, so a hostile
-    ;; value cannot crash logging. Fuzz that contract across many generated
-    ;; inputs with a bounded per-trial timeout rather than one hand-picked case.
+    ;; Fuzz the total, single-line rendering contract across generated values.
     (it-fuzz "the text handler renders any generated field value as one safe line"
         ((key (gen-one-of (gen-keyword '("a" "b" "id" "n"))
                           (gen-string :min-length 1 :max-length 6)))
@@ -74,11 +62,7 @@
         (setf (char mutable 0) #\X)
         (expect (log-record-fields record) :to-have-field :key value)))
 
-    ;; Fuzz the recursive defensive snapshot (the library's most complex,
-    ;; security-relevant code) with GEN-RECURSIVE-built nested field values of
-    ;; arbitrary depth and shape, rather than the hand-picked examples the
-    ;; other specs use. The snapshot must be a faithful structural copy that
-    ;; shares no mutable cons or string with the source.
+    ;; Fuzz nested values and verify the snapshot shares no mutable structure.
     (it-property "recursively snapshots arbitrary nested field values"
         ((value (gen-recursive
                   (gen-one-of (gen-integer :min -50 :max 50)

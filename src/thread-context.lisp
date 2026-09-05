@@ -1,13 +1,3 @@
-;;;; src/thread-context.lisp
-;;;
-;;; SB-THREAD:MAKE-THREAD starts a fresh thread with *LOG-CONTEXT-FIELDS* and
-;;; *LOG-SPAN-ID* at their global (empty) values — SBCL threads do not
-;;; inherit a parent thread's dynamic bindings. CAPTURE-LOG-CONTEXT and
-;;; CALL-WITH-CAPTURED-LOG-CONTEXT let a caller snapshot the active
-;;; WITH-LOG-CONTEXT fields and WITH-LOG-SPAN span id before spawning a
-;;; worker thread, then restore that snapshot inside the worker's body, so
-;;; log calls made from the worker still carry the fields and span id the
-;;; spawning thread had in scope.
 (in-package #:log-kit)
 
 (defstruct (log-context-snapshot (:constructor %make-log-context-snapshot (fields span-id))

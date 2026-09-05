@@ -1,15 +1,5 @@
-;;;; src/handler-json.lisp
-;;;
-;;; json-handler wire format: one strict RFC 8259 JSON object per line,
-;;; built on json-encoding.lisp's value writers/validators.
 (in-package #:log-kit)
 
-;;; This file's hot path runs on every enabled log call. SAFETY 1 (not 0)
-;;; keeps ordinary type checking — including the resource-limit guards
-;;; elsewhere in the library that depend on catchable type/range errors —
-;;; while SPEED 3 lets SBCL apply the same optimizations a caller would get
-;;; from per-function (OPTIMIZE ...) declarations, without repeating them
-;;; on every DEFUN in the file.
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
 (defun %write-json-field (key value first-p stream)

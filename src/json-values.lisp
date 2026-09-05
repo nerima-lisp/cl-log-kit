@@ -1,10 +1,3 @@
-;;;; src/json-values.lisp
-;;;
-;;; The explicit JSON value model: the null/false sentinels and the object/
-;;; array wrapper structs, with the predicates and member accessors built on
-;;; them. This is pure data — no algorithm of its own — so both
-;;; snapshot.lisp's recursive deep-copier and json-encoding.lisp's writer/
-;;; validator depend on it.
 (in-package #:log-kit)
 
 (defstruct (json-null-marker (:constructor %make-json-null)))

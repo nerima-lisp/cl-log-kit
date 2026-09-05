@@ -1,13 +1,7 @@
-;;;; t/handler-text-test.lisp
-;;;
-;;; text-handler wire format: one physical line per record, with untrusted
-;;; tokens escaped so a log line can never be spoofed or split, and the
-;;; hostile-printer guarantee (arbitrary field values never reach an
-;;; unbounded PRINT-OBJECT method). Mirrors src/handler-text.lisp.
 (in-package #:cl-log-kit/test)
 
 ;;; A value whose printer never terminates and counts its own invocations, so
-;;; a test can prove the text handler never calls an arbitrary print-object.
+;;; the test checks that the text handler never calls an arbitrary print-object.
 (defvar *hostile-printer-call-count* 0)
 
 (defclass hostile-text-value () ())

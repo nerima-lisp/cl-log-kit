@@ -1,30 +1,14 @@
-;;;; src/handler-text.lisp
-;;;
-;;; text-handler wire format: one physical line per record shaped as
-;;; ts=... level=... logger="..." msg="..." field."k"="v", with every
-;;; untrusted token escaped so a log line can never be spoofed or split.
 (in-package #:log-kit)
 
-;;; This file's hot path runs on every enabled log call. SAFETY 1 (not 0)
-;;; keeps ordinary type checking — including the resource-limit guards
-;;; elsewhere in the library that depend on catchable type/range errors —
-;;; while SPEED 3 lets SBCL apply the same optimizations a caller would get
-;;; from per-function (OPTIMIZE ...) declarations, without repeating them
-;;; on every DEFUN in the file.
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
-;;; FLOAT-INFINITY-P / FLOAT-NAN-P decode a float's raw bit pattern (exponent
-;;; and mantissa fields); they never perform a trapping floating-point
-;;; operation, so unlike arithmetic on a non-finite float, calling them here
-;;; cannot itself signal ARITHMETIC-ERROR.
+;;; SBCL's bit-level predicates detect non-finite floats without arithmetic.
 (defun %safe-text-finite-number-p (value)
   (or (not (floatp value))
       (not (or (sb-ext:float-infinity-p value) (sb-ext:float-nan-p value)))))
 
 (defun %safe-text-value-string (value)
-  "Render VALUE for a caller that has already special-cased plain integers
-(their decimal digits can never need escaping, so %WRITE-TEXT-VALUE writes
-them directly and never reaches this function for an INTEGER)."
+  "Render a non-integer VALUE for text output."
   (typecase value
     (string value)
     (character (string value))
@@ -51,17 +35,11 @@ rendered log line look different from what it actually contains."
       (= code #xFEFF)))
 
 (defun %write-text-value (value stream)
-  ;; An integer's decimal digits and optional leading minus sign can never
-  ;; contain an escape-worthy character, so writing it directly skips both
-  ;; %SAFE-TEXT-VALUE-STRING's intermediate string and the run-scanning
-  ;; loop below entirely — the common case for numeric fields.
+  ;; Decimal integers need no escaping and can be written directly.
   (if (integerp value)
       (%write-integer value stream)
       (let* ((raw (%safe-text-value-string value))
-             ;; Guaranteed-simple copy (a no-op for the already-simple string
-             ;; %SAFE-TEXT-VALUE-STRING returns) so SCHAR and the run-flushing
-             ;; WRITE-STRING take the fast simple-array path instead of the
-             ;; generic hairy-array element reader.
+             ;; Use the simple-string fast path for scanning and run writes.
              (text (if (simple-string-p raw) raw (coerce raw 'simple-string)))
              (length (length text))
              (run-start 0))
@@ -73,14 +51,7 @@ rendered log line look different from what it actually contains."
           (dotimes (index length)
             (declare (type fixnum index))
             (let ((character (schar text index)))
-              ;; Fast path: a printable ASCII character (code 32..126) needs
-              ;; escaping only if it is a quote or backslash. Everything else
-              ;; in that range — every letter, digit, space, and ordinary
-              ;; punctuation, i.e. the overwhelming majority of log text —
-              ;; stays part of the current run with a single range test and
-              ;; two character comparisons, never touching CHAR-CODE or the
-              ;; five-range spoof-character scan. Only the rare non-printable
-              ;; or non-ASCII character pays for the full classification.
+              ;; Printable ASCII needs escaping only for quotes and backslashes.
               (cond
                 ((char<= #\Space character #\~)
                  (case character

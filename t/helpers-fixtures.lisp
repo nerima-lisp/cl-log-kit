@@ -1,8 +1,3 @@
-;;;; t/helpers-fixtures.lisp
-;;;
-;;; Shared test toolkit: the fixtures and helpers every spec file builds on.
-;;; Keeping them here (loaded first) means no spec file has to reach into
-;;; another for a handler class or a signalling helper.
 (in-package #:cl-log-kit/test)
 
 ;;; A handler that records every record it receives, newest first. RECORDS
@@ -50,9 +45,7 @@
                               :level level :fields fields :clock clock)))
     (values logger (lambda () (get-output-stream-string stream)))))
 
-;;; True when two structural copies share no mutable substructure: no EQ cons
-;;; cell and no EQ non-empty string. This is the identity half of the snapshot
-;;; guarantee — that later mutation of one value can never reach the other.
+;;; True when two structural copies share no mutable cons or non-empty string.
 (defun shares-no-structure-p (a b)
   (cond
     ((and (consp a) (consp b))

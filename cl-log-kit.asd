@@ -18,7 +18,7 @@
   :bug-tracker "https://github.com/nerima-lisp/cl-log-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-log-kit.git")
   ;; UIOP:GETENV / UIOP:SYMBOL-CALL usage in the bootstrap scripts and the
-  ;; :VERSION test-op below need a modern ASDF; require it explicitly so a
+  ;; :VERSION test-op below need ASDF 3.3.1; require it explicitly so a
   ;; stale system ASDF fails fast with a clear version error instead of a
   ;; confusing missing-function error deep in the load.
   :depends-on ((:version "asdf" "3.3.1")

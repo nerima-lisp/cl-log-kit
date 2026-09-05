@@ -1,8 +1,3 @@
-;;;; src/log-context.lisp
-;;;
-;;; WITH-LOG-CONTEXT: dynamically scoped field merging, independent of any
-;;; particular logger instance. Loads before logger.lisp so LOGGER-WITH/
-;;; LOGGER-CHILD there can reuse %MERGE-FIELD-ALISTS.
 (in-package #:log-kit)
 
 (defvar *log-context-fields* nil

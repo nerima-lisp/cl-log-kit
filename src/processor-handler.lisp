@@ -1,11 +1,3 @@
-;;;; src/processor-handler.lisp
-;;;
-;;; PROCESSOR-HANDLER: a composition handler that runs a chain of processor
-;;; functions over each record before forwarding it to a target handler,
-;;; enriching records with data no call site should have to pass explicitly
-;;; (host name, process id, and the like) — the same role Monolog's processor
-;;; stack plays, expressed as one more MAKE-*-HANDLER wrapper alongside
-;;; FILTER-HANDLER and MULTI-HANDLER rather than a separate logger concept.
 (in-package #:log-kit)
 
 (defclass processor-handler (close-managed-handler)

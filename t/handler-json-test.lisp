@@ -1,8 +1,3 @@
-;;;; t/handler-json-test.lisp
-;;;
-;;; json-handler wire format: one strict RFC 8259 JSON object per line,
-;;; validated up front so a partially written object can never reach the
-;;; stream. Mirrors src/handler-json.lisp.
 (in-package #:cl-log-kit/test)
 
 (describe "json wire format"
@@ -29,10 +24,7 @@
         (signals unsupported-json-value (render-json-value (string surrogate))))))
 
   (it "json-handler output parses back to the expected structure"
-    ;; Assert the emitted line is well-formed JSON by parsing it with an
-    ;; independent nerima-lisp parser (cl-json-kit) and checking the decoded
-    ;; structure, rather than only matching substrings — this catches a
-    ;; malformed object (stray comma, unquoted key) a SEARCH would miss.
+    ;; Parse with cl-json-kit so malformed JSON is detected structurally.
     (let* ((output (render-through
                      'json-handler
                      (make-test-record :message "hi" :timestamp 42

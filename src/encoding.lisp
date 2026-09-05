@@ -1,25 +1,7 @@
-;;;; src/encoding.lisp
-;;;
-;;; Low-level, allocation-conscious encoding primitives shared by
-;;; handler-text.lisp and handler-json.lisp: base-10 integer digits, a
-;;; \uXXXX Unicode escape, the downcased-keyword-name cache, and the
-;;; symbol-to-field-string rule. Pure data-rendering helpers with no
-;;; dependency on the handler protocol or stream lifecycle in handler.lisp.
 (in-package #:log-kit)
 
-;;; Downcased-keyword-name cache. Rendering a keyword field key or value means
-;;; STRING-DOWNCASE'ing its symbol name, which allocates a fresh string on
-;;; every log call — and real workloads reuse the same small set of keys
-;;; (:method, :path, :status, ...) across millions of records. Interning each
-;;; keyword's downcased name once removes that per-call allocation entirely.
-;;;
-;;; Concurrency: the published table is immutable. A cache miss builds a NEW
-;;; table (old entries + the one new keyword) under a lock and atomically
-;;; swaps the global pointer, so a reader is always traversing a table no
-;;; thread will ever mutate — the lock-free hit path is a single plain
-;;; GETHASH with no data race against a concurrent grow/rehash. Misses are
-;;; rare (one per distinct keyword, for the process lifetime), so the O(n)
-;;; copy-on-write cost is paid a handful of times, never on the steady state.
+;;; Immutable copy-on-write cache for downcased keyword names. Hits are
+;;; lock-free; misses copy the table under the cache lock before publishing it.
 (sb-ext:defglobal **keyword-name-cache** (make-hash-table :test #'eq))
 
 ;;; Shared low-level escape used by both the text and JSON encoders: render a
@@ -28,14 +10,7 @@
 (defun %write-unicode-escape (code stream)
   (format stream "\\u~4,'0X" code))
 
-;;; Shared fast integer writer. PRINC / WRITE route a plain integer through
-;;; OUTPUT-OBJECT and the pretty-print dispatch table before ever emitting a
-;;; digit — pure overhead on a hot log field. Emitting the base-10 digits
-;;; directly is both faster and allocation-free, and — because it derives each
-;;; digit from (REM n 10) — it is always decimal regardless of a caller-bound
-;;; *PRINT-BASE*, which the JSON encoder needs for RFC 8259 conformance.
-;;; The (OPTIMIZE ...) declarations below are per-function, not a file-level
-;;; DECLAIM, so the SPEED 3 policy cannot leak into later-loaded source files.
+;;; Write fixnums directly in base 10 to avoid printer overhead and allocations.
 (defun %write-nonneg-fixnum-digits (n stream)
   (declare (type (and fixnum unsigned-byte) n)
            (optimize (speed 3) (safety 1)))

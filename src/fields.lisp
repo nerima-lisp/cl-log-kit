@@ -1,9 +1,3 @@
-;;;; src/fields.lisp
-;;;
-;;; The public field-construction API built on snapshot.lisp's deep-copy
-;;; engine: JSON-OBJECT/JSON-ARRAY and their accessors, and PLIST-TO-ALIST,
-;;; the canonical-alist conversion every log call's field plist goes
-;;; through.
 (in-package #:log-kit)
 
 (defun %validated-object-members (members)

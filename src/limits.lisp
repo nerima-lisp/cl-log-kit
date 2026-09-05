@@ -1,9 +1,3 @@
-;;;; src/limits.lisp
-;;;
-;;; The resource-bound constants and the guards that signal
-;;; LOG-RESOURCE-LIMIT-EXCEEDED (conditions.lisp) when a field value's depth,
-;;; node count, string length, or collection size exceeds them, so a hostile
-;;; or accidentally huge value can never exhaust memory or loop unboundedly.
 (in-package #:log-kit)
 
 (defconstant +max-log-field-depth+ 64)

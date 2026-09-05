@@ -1,10 +1,3 @@
-;;;; src/macro-utils.lisp
-;;;
-;;; Macro-authoring utilities shared by every DEFUN-DEFAULTED/
-;;; DEFMETHOD-DEFAULTED call site across the codebase: CHECK-TYPES for
-;;; multi-value type validation, and the %CONSTANT-DEFAULT wrapper (plus its
-;;; lambda-list rewriter) that keeps sb-cover crediting an omitted-keyword
-;;; default as executed code instead of a permanently "not run" literal.
 (in-package #:log-kit)
 
 (defmacro check-types (&body clauses)

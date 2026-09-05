@@ -1,25 +1,6 @@
-;;;; src/stream-state.lisp
-;;;
-;;; %STREAM-STATE: the per-physical-stream close/lifecycle state machine
-;;; shared by every handler wrapping that stream, keyed weakly by the stream
-;;; itself. handler.lisp's %STREAM-HANDLER protocol builds its write-lock
-;;; admission (%BEGIN-STREAM-OPERATION/%END-STREAM-OPERATION) and its
-;;; close-once negotiation (%BEGIN-OWNED-CLOSE) on top of the primitives
-;;; defined here.
 (in-package #:log-kit)
 
-;;; Every physical output stream shared by one or more handlers gets exactly
-;;; one %STREAM-STATE, keyed weakly on the stream itself, so handlers that
-;;; wrap the *same* stream (e.g. two JSON handlers around one socket) agree
-;;; on a single write lock and a single close.
-;;;
-;;; CLOSE-STATE is one of four mutually exclusive values rather than three
-;;; independent booleans, because that is what the lifecycle actually is:
-;;; :OPEN, then (only when a close is requested from inside an already-owned
-;;; operation) :CLOSE-PENDING until that operation unwinds, then :CLOSING
-;;; while the physical close runs, then :CLOSED. %STREAM-STATE-CLOSING-P/
-;;; -CLOSED-P/-CLOSE-PENDING-P below are the same predicates every caller
-;;; already used; only their storage changed.
+;;; Shared streams use one weakly keyed state, lock, and close lifecycle.
 (defstruct (%stream-state (:constructor %make-stream-state (lock waitqueue)))
   lock
   waitqueue

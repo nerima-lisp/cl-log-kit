@@ -1,4 +1,3 @@
-;;;; src/package.lisp
 (defpackage #:log-kit
   (:use #:cl)
   (:shadow #:log)

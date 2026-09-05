@@ -1,22 +1,7 @@
-;;;; src/rotating-file-handler.lisp
-;;;
-;;; ROTATING-FILE-HANDLER: a file-backed handler that opens a fresh dated
-;;; file whenever an injectable clock's "bucket" (by default today's UTC
-;;; calendar date) changes, and prunes rotated files beyond a retention
-;;; count — the same role Monolog's RotatingFileHandler plays. Delegates
-;;; every write to a plain TEXT-HANDLER/JSON-HANDLER it owns and swaps out on
-;;; rotation, rather than teaching the stream backbone in handler.lisp about
-;;; rotation, so the concurrency-critical stream lifecycle code there stays
-;;; unchanged.
 (in-package #:log-kit)
 
 (defun %current-log-rotation-date ()
-  "The default rotation clock: today's UTC date as a zero-padded YYYY-MM-DD
-string. UTC, not the host's local time zone, so a fleet spread across zones
-(or simply misconfigured on one host) rotates on the same boundary
-everywhere; a custom clock must also return values that sort
-lexicographically in the same order as chronological order, since ordering
-rotated files for retention purposes uses a plain string comparison."
+  "Return today's UTC date for rotation; custom values must sort chronologically."
   (cl-date-kit:format-local-date
    (cl-date-kit:local-date-of-instant (cl-date-kit:instant-now) (cl-date-kit:zone-offset-utc))))
 
@@ -106,10 +91,7 @@ with HANDLER's lock held."
                                          (host-kit:directory-files directory))
                          #'string> :key #'namestring)))
         (dolist (file (nthcdr max-files files))
-          ;; Confined again immediately before the delete, not just implied
-          ;; by having come from DIRECTORY-FILES: the check is what a hostile
-          ;; or surprising BASE-PATHNAME (a symlinked log directory, say)
-          ;; cannot bypass merely by changing what DIRECTORY-FILES returned.
+          ;; Recheck containment immediately before deletion, including symlinked bases.
           (when (host-kit:pathname-within-p file directory)
             (host-kit:delete-file-if-exists file)))))))
 

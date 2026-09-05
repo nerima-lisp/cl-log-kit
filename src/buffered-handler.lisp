@@ -1,11 +1,3 @@
-;;;; src/buffered-handler.lisp
-;;;
-;;; BUFFERED-HANDLER: holds records back until one at or above a trigger
-;;; level arrives, then forwards the whole held-back run — including the
-;;; triggering record — to a target handler in order, the same role
-;;; Monolog's FingersCrossedHandler plays: stay quiet through routine
-;;; DEBUG/INFO traffic, but reveal the context leading up to an ERROR once
-;;; one actually happens.
 (in-package #:log-kit)
 
 (defclass buffered-handler (close-managed-handler)

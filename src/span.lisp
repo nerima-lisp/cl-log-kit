@@ -1,9 +1,3 @@
-;;;; src/span.lisp
-;;;
-;;; WITH-LOG-SPAN: emit paired :start / :end records around a body, threading a
-;;; span id (and parent span id) through *LOG-CONTEXT-FIELDS* so nested spans
-;;; form a tree, and classifying the exit as :success, :error, or
-;;; :nonlocal-exit.
 (in-package #:log-kit)
 
 (defvar *log-span-id* nil)
@@ -11,16 +5,9 @@
 (defun %monotonic-time ()
   (/ (get-internal-real-time) (float internal-time-units-per-second 1d0)))
 
-;;; Span ids must be unique across every thread in the process: the whole
-;;; point of :SPAN-ID (and CAPTURE-LOG-CONTEXT's cross-thread replay) is that
-;;; two records carrying the same id belong to the same span. CL:GENSYM does
-;;; not provide that — it reads and writes the global *GENSYM-COUNTER*
-;;; non-atomically, so concurrent spans hand out duplicate ids (measured: 8
-;;; threads x 20,000 spans yielded 39,595 distinct ids out of 160,000).
-;;; CL-CONCURRENT-KIT:ATOMIC-COUNTER-INCF wraps the same SB-EXT:ATOMIC-INCF
-;;; lock-xadd technique, so it is both correct under concurrency and cheaper
-;;; than GENSYM's symbol allocation. Uniqueness is per-process, exactly as it
-;;; was before; callers correlating spans across processes should inject
+;;; Span ids use a process-wide atomic counter so context replay across
+;;; threads cannot assign the same id to different spans. Uniqueness is
+;;; per-process; callers correlating spans across processes should inject
 ;;; their own :ID-SOURCE.
 (sb-ext:define-load-time-global **span-id-counter** (cl-concurrent-kit:make-atomic-counter))
 

@@ -1,8 +1,3 @@
-;;;; src/logger.lisp
-;;;
-;;; LOGGER: the immutable configuration and contextual fields a log call
-;;; reads from. LOGGER-WITH / DERIVE-LOGGER / LOGGER-CHILD all build a new
-;;; logger from an old one rather than mutating in place.
 (in-package #:log-kit)
 
 ;;; Bound only around %MAKE-LOGGER-FROM-SNAPSHOT, where FIELDS is already a

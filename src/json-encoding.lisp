@@ -1,23 +1,8 @@
-;;;; src/json-encoding.lisp
-;;;
-;;; Value/object/array/string/float JSON writers and validators shared by
-;;; handler-json.lisp's record writer: every field value is fully validated
-;;; (finite numbers, no surrogate code points) before %WRITE-JSON-RECORD
-;;; writes a single byte, so a partially written object can never reach the
-;;; stream.
 (in-package #:log-kit)
 
-;;; This file's hot path runs on every enabled log call. SAFETY 1 (not 0)
-;;; keeps ordinary type checking — including the resource-limit guards
-;;; elsewhere in the library that depend on catchable type/range errors —
-;;; while SPEED 3 lets SBCL apply the same optimizations a caller would get
-;;; from per-function (OPTIMIZE ...) declarations, without repeating them
-;;; on every DEFUN in the file.
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
-;;; Named once so the writer and the validator report the same reason: the two
-;;; walk the same type dispatch, and a reader who hits one message must be able
-;;; to trust it describes the other path too.
+;;; Shared by validation and writing so both paths report the same reason.
 (defparameter +unsupported-json-value-reason+
   "supported values are explicit JSON values, strings, integers, finite floats, and symbols")
 
@@ -34,14 +19,9 @@
   (<= #xD800 code #xDFFF))
 
 (defun %validate-json-string (value)
-  ;; A BASE-STRING holds only base-chars (code < 128 on SBCL), so it can never
-  ;; contain a Unicode surrogate (#xD800..#xDFFF): the whole scan is provably
-  ;; unnecessary and collapses to a single widetag test. ASCII log text — the
-  ;; overwhelming common case — takes exactly this exit.
+  ;; BASE-STRING cannot contain surrogate code points on SBCL.
   (unless (typep value 'base-string)
-    ;; Otherwise dispatch once on simple-ness and index with SCHAR, avoiding
-    ;; the generic hairy-array element reader; a non-simple string (rare) is
-    ;; coerced once up front.
+    ;; Coerce once so the scan can use the simple-string fast path.
     (let ((string (if (simple-string-p value) value (coerce value 'simple-string))))
       (declare (type simple-string string))
       (dotimes (index (length string))
@@ -52,15 +32,9 @@
   value)
 
 (defun %write-json-string (value stream)
-  ;; No surrogate re-validation here: every write path reaches this function
-  ;; only after HANDLE-LOG-RECORD has run %VALIDATE-JSON-RECORD over the whole
-  ;; record (and the fixed structural keys it also emits are ASCII literals),
-  ;; so the string is already known surrogate-free. Re-scanning it here just
-  ;; to re-derive that fact was a third full pass over every field string.
+  ;; HANDLE-LOG-RECORD validates the record before calling this writer.
   (write-char #\" stream)
-  ;; Bind STRING to a guaranteed-simple copy of VALUE (a no-op for the common
-  ;; already-simple string) so both the per-character SCHAR below and the
-  ;; run-flushing WRITE-STRING take the fast simple-array path.
+  ;; Use a simple string for the character scan and run writes.
   (let* ((string (if (simple-string-p value) value (coerce value 'simple-string)))
          (length (length string))
          (run-start 0))
@@ -72,12 +46,7 @@
       (dotimes (index length)
         (declare (type fixnum index))
         (let ((character (schar string index)))
-          ;; Fast path (see the matching note in handler-text's
-          ;; %WRITE-TEXT-VALUE): a printable ASCII character escapes only if it
-          ;; is a quote or backslash, so ordinary text stays in the current
-          ;; run with one range test and two comparisons and never computes
-          ;; CHAR-CODE. The seven C0 escapes and the generic control escape
-          ;; live on the rare non-printable branch.
+          ;; Printable ASCII needs escaping only for quotes and backslashes.
           (cond
             ((char<= #\Space character #\~)
              (case character
@@ -115,14 +84,8 @@
     (error 'unsupported-json-value :value value :reason "JSON numbers must be finite"))
   (if (zerop value)
       (write-string (if (minusp (float-sign value)) "-0.0" "0.0") stream)
-      ;; Binding *READ-DEFAULT-FLOAT-FORMAT* to VALUE's own type makes SBCL's
-      ;; printer emit the exponent marker as a bare 'e' (or omit it) instead
-      ;; of the type-specific letter (1.5d0, 1.5f0, ...) — so the printed form
-      ;; is already strict RFC 8259, needing neither an intermediate string
-      ;; nor a normalizing pass. PRIN1 straight to STREAM then conses nothing
-      ;; per call (WRITE-TO-STRING allocated a full fresh string every time).
-      ;; SBCL aliases SHORT-FLOAT to SINGLE-FLOAT and LONG-FLOAT to
-      ;; DOUBLE-FLOAT, so these two branches cover all four float types.
+      ;; Use the value's float type so SBCL emits an RFC 8259 exponent marker
+      ;; directly to STREAM without an intermediate string.
       (let ((*read-default-float-format* (etypecase value
                                            (double-float 'double-float)
                                            (single-float 'single-float))))

@@ -1,8 +1,3 @@
-;;;; t/record-test.lisp
-;;;
-;;; The LOG-RECORD value type and the bounded, cycle-checked field snapshot:
-;;; construction validation, deep isolation from caller mutation, and the
-;;; resource limits that keep a single record from exhausting memory.
 (in-package #:cl-log-kit/test)
 
 ;;; Catch a LOG-RESOURCE-LIMIT-EXCEEDED from THUNK, or return NIL.
@@ -164,9 +159,8 @@
         (expect (eq (log-resource-limit-resource condition) :depth) :to-be-truthy)))
 
     (it "charges a flat list's length to the element bound, not to nesting depth"
-      ;; A cons has two children, so the obvious recursive snapshot descends
-      ;; into the CDR as well as the CAR — which silently redefines "nesting
-      ;; depth" as "list length" and rejects an ordinary
+      ;; A recursive snapshot that descends into the CDR as well as the CAR
+      ;; would redefine "nesting depth" as "list length" and reject an ordinary
       ;; (log-info logger "msg" :items '(1 2 ... 100)) that the equivalent
       ;; vector or JSON array accepts. These assert the three shapes agree.
       (let* ((length (* 2 log-kit::+max-log-field-depth+))

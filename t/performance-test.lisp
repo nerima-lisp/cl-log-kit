@@ -1,8 +1,3 @@
-;;;; t/performance-test.lisp
-;;;
-;;; Performance guarantees: the log macros do not evaluate their arguments when
-;;; filtered, and (on SBCL) filtered logging conses nothing per call while
-;;; enabled logging and backtrace capture stay within fixed allocation bounds.
 (in-package #:cl-log-kit/test)
 
 (describe "performance"

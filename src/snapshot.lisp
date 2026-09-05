@@ -1,15 +1,5 @@
-;;;; src/snapshot.lisp
-;;;
-;;; The deep, bounded, cycle-checked snapshot that copies every field value
-;;; before it enters an immutable log record. This is what makes a record a
-;;; true point-in-time snapshot the caller can no longer mutate. The explicit
-;;; JSON value model (null/false sentinels, object/array wrappers) this
-;;; snapshot walks lives in json-values.lisp.
 (in-package #:log-kit)
 
-;;; This file's recursive snapshot walk runs on every field of every enabled
-;;; log call. SAFETY 1 (not 0) keeps the type/range checks the resource
-;;; limits below depend on; SPEED 3 optimizes the traversal itself.
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
 (defun %canonical-field-name (key)
@@ -81,8 +71,8 @@ helper, keeping each snapshot branch free of lambda boilerplate."
   "Deep-copy the cons tree rooted at VALUE, walking its CDR spine iteratively.
 
 Only the CARs — and a dotted tail — descend a level of DEPTH; the spine
-itself stays at DEPTH. Recursing on the CDR as well, the obvious reading of
-\"a cons has two children,\" would instead charge an ordinary flat list one
+itself stays at DEPTH. Recursing on the CDR as well would charge an ordinary
+flat list one
 level of nesting per element, so a 100-element list field would be rejected
 as 100 levels deep while the equivalent 100-element vector or JSON array
 passed. A list's *length* is therefore bounded the way every other

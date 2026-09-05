@@ -1,11 +1,3 @@
-;;;; benchmark/competitors.lisp
-;;;
-;;; Comparative SBCL benchmark: cl-log-kit's text-handler against
-;;; log4cl (quicklisp.org's most-downloaded Common Lisp logging library),
-;;; both writing an equivalent info-level message plus four key/value pairs
-;;; to a discarding stream, measured by the same minimum-over-full-GC'd-
-;;; repetitions methodology as benchmark/run.lisp. Requires network access
-;;; to fetch log4cl via Quicklisp on first run.
 ;;; Usage: sbcl --script benchmark/competitors.lisp
 (require :asdf)
 

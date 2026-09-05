@@ -1,9 +1,3 @@
-;;;; t/coverage-test.lisp
-;;;
-;;; Boundary and edge-case specs that exercise the rarely-taken branches:
-;;; every wire-format value type, level-name for all ranks, malformed
-;;; structured fields, default span sources, and lifecycle guard rails. These
-;;; close the branch-coverage gaps the behavioural specs leave open.
 (in-package #:cl-log-kit/test)
 
 (describe "edge cases"
@@ -376,10 +370,10 @@
               :to-throw 'unsupported-json-value)))
 
   (it "%snapshot-field-value falls back to a fresh context when called with neither an explicit context nor an active dynamic one"
-    ;; Every internal caller in fields.lisp binds *FIELD-SNAPSHOT-CONTEXT*
+    ;; Internal callers in fields.lisp bind *FIELD-SNAPSHOT-CONTEXT*
     ;; before ever reaching %SNAPSHOT-FIELD-VALUE, and every recursive
     ;; self-call passes CONTEXT explicitly, so the (%MAKE-SNAPSHOT-CONTEXT)
-    ;; fallback in its OR is otherwise never exercised. Calling it directly,
-    ;; bypassing both, proves the defensive fallback itself is correct.
+    ;; fallback in its OR is otherwise never exercised. Calling it directly
+    ;; covers that fallback.
     (expect log-kit::*field-snapshot-context* :to-be nil)
     (expect (log-kit::%snapshot-field-value (list 1 2 3)) :to-equal (list 1 2 3))))

@@ -1,9 +1,3 @@
-;;;; t/handler-test.lisp
-;;;
-;;; The shared stream backbone every stream-backed handler builds on: the
-;;; concurrent close / flush / auto-flush lifecycle that guarantees each
-;;; record is written exactly once, including the re-entrant and owner/peer
-;;; races. Mirrors src/handler.lisp.
 (in-package #:cl-log-kit/test)
 
 (describe "stream lifecycle"
@@ -25,7 +19,7 @@
     ;; and by the time OWNER's physical close finishes, the shared state's
     ;; CLOSING-P has already reset to nil — so this is the one combination
     ;; where %ENSURE-OPEN-HANDLER's guard can only be tripped by CLOSED-P,
-    ;; with CLOSING-P proven false in the same call.
+    ;; while CLOSING-P is false.
     (let* ((stream (make-string-output-stream))
            (owner (make-instance 'json-handler :stream stream :owns-stream t))
            (peer (make-instance 'json-handler :stream stream)))

@@ -1,8 +1,3 @@
-;;;; t/processor-handler-test.lisp
-;;;
-;;; PROCESSOR-HANDLER: running a chain of enrichment functions over a record
-;;; before forwarding it to a target handler. Mirrors
-;;; src/processor-handler.lisp.
 (in-package #:cl-log-kit/test)
 
 (describe "processor handler"

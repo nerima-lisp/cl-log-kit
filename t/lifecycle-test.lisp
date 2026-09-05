@@ -1,12 +1,6 @@
-;;;; t/lifecycle-test.lisp
-;;;
-;;; The thread-safe close-once lifecycle shared by every composite handler:
-;;; admitted operations, idempotent and retryable close, and the error-policy
-;;; interaction with a failing child. Mirrors src/lifecycle.lisp.
 (in-package #:cl-log-kit/test)
 
-;;; A handler that exposes its own open/closed state, to prove HANDLER-OPEN-P
-;;; is a specializable protocol.
+;;; A handler that exposes its own open/closed state for HANDLER-OPEN-P tests.
 (defclass introspectable-handler (handler)
   ((open-p :initform t :accessor introspectable-handler-open-p)))
 

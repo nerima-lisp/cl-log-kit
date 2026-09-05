@@ -1,9 +1,3 @@
-;;;; t/thread-context-test.lisp
-;;;
-;;; CAPTURE-LOG-CONTEXT / CALL-WITH-CAPTURED-LOG-CONTEXT / WITH-CAPTURED-LOG-CONTEXT:
-;;; snapshotting the active WITH-LOG-CONTEXT fields and WITH-LOG-SPAN span id
-;;; and replaying them later, including across a real SB-THREAD boundary
-;;; where the dynamic bindings are not otherwise inherited.
 (in-package #:cl-log-kit/test)
 
 (describe "log context propagation"

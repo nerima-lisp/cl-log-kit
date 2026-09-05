@@ -1,10 +1,3 @@
-;;;; src/handlers.lisp
-;;;
-;;; MULTI-HANDLER: the fan-out composite built on the lifecycle.lisp
-;;; backbone, applying an error policy (:SIGNAL, :CONTINUE, or :CALLBACK)
-;;; across its children. Also FLUSH-LOGGER. The single/no-child handlers
-;;; (FILTER-HANDLER, FUNCTION-HANDLER, NULL-HANDLER) live in
-;;; simple-handlers.lisp.
 (in-package #:log-kit)
 
 (defclass multi-handler (close-managed-handler)

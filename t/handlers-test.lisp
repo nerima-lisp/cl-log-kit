@@ -1,9 +1,3 @@
-;;;; t/handlers-test.lisp
-;;;
-;;; The composite and terminal handlers built on the lifecycle.lisp backbone:
-;;; MULTI-HANDLER (fan-out with an error policy), FILTER-HANDLER (predicate
-;;; gate), FUNCTION-HANDLER (adapt a closure), and NULL-HANDLER. Mirrors
-;;; src/handlers.lisp.
 (in-package #:cl-log-kit/test)
 
 ;;; A function-handler that only records which records it was handed.

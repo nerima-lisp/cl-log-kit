@@ -1,8 +1,3 @@
-;;;; t/span-test.lisp
-;;;
-;;; WITH-LOG-SPAN: lazy metadata under filtering, paired :start / :end records
-;;; with a parent/child span tree, and exit classification (:success, :error,
-;;; :nonlocal-exit).
 (in-package #:cl-log-kit/test)
 
 (describe "log spans"
@@ -25,12 +20,8 @@
         (expect handler :to-have-recorded 0))))
 
   (it "hands out a distinct default span id to every concurrent span"
-    ;; A span id that repeats is worse than no span id: two unrelated spans
-    ;; become indistinguishable in the aggregated log. The obvious
-    ;; implementation, (SYMBOL-NAME (GENSYM "SPAN-")), reads and writes the
-    ;; global *GENSYM-COUNTER* non-atomically, and duplicated at a ~75% rate
-    ;; under this exact load — so this spec asserts the property the docs
-    ;; promise ("a fresh, unique string") rather than the id's spelling.
+    ;; Concurrent default span ids must remain unique; assert uniqueness rather
+    ;; than spelling.
     (let* ((threads 8)
            (per-thread 2000)
            (ids (loop for thread in (loop repeat threads

@@ -1,9 +1,3 @@
-;;;; benchmark/run.lisp
-;;;
-;;; Reproducible SBCL benchmark for cl-log-kit's own hot paths: minimum
-;;; wall-clock time and bytes consed per call, taken over several full-GC'd
-;;; repetitions so GC noise cannot mask the steady-state cost. Mirrors the
-;;; benchmark/ convention already used by nerima-lisp/cl-json-kit.
 ;;; Usage: sbcl --script benchmark/run.lisp
 (require :asdf)
 

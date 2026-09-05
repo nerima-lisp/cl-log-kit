@@ -1,9 +1,3 @@
-;;;; t/package.lisp
-;;;
-;;; The test package imports the real nerima-lisp/cl-weave DSL explicitly
-;;; (no blanket :use, so a future cl-weave export never silently shadows a
-;;; log-kit symbol). CL:DESCRIBE is shadowed in favor of CL-WEAVE:DESCRIBE,
-;;; per the cl-weave installation contract.
 (defpackage #:cl-log-kit/test
   (:use #:cl #:log-kit)
   (:shadowing-import-from #:cl-weave #:describe)

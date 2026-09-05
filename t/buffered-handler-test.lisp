@@ -1,8 +1,3 @@
-;;;; t/buffered-handler-test.lisp
-;;;
-;;; BUFFERED-HANDLER: holding records back until a trigger-level record
-;;; arrives, then releasing the held-back run in order. Mirrors
-;;; src/buffered-handler.lisp.
 (in-package #:cl-log-kit/test)
 
 (defun buffered-messages (handler)

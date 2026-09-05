@@ -1,8 +1,3 @@
-;;;; src/record.lisp
-;;;
-;;; LOG-RECORD: the immutable value that flows from a logger to a handler.
-;;; Construction snapshots the message, logger name, and fields (via
-;;; snapshot.lisp) so a record can never observe a later mutation.
 (in-package #:log-kit)
 
 (defstruct (log-record

@@ -1,8 +1,3 @@
-;;;; t/logger-test.lisp
-;;;
-;;; Logger behaviour: default-logger scoping, the fixed Unix clock, immutable
-;;; contextual fields, child derivation with field precedence, the generated
-;;; LOG-<LEVEL> macros' lazy evaluation, and WITH-LOG-CONTEXT dynamics.
 (in-package #:cl-log-kit/test)
 
 (describe "loggers"

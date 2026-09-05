@@ -1,15 +1,5 @@
-;;;; src/convenience.lisp
-;;;
-;;; The core logging surface: the level check, the single emit path
-;;; (%EMIT-LOG-UNCHECKED), and the LOG / LOG-DEFAULT / LOG-<LEVEL> macro
-;;; families generated from one data table by DEFINE-LOG-LEVEL-MACROS. The
-;;; field-plist helpers at the bottom are shared by condition-logging.lisp
-;;; and span.lisp.
 (in-package #:log-kit)
 
-;;; %EMIT-LOG-UNCHECKED is the single path every enabled log call reaches.
-;;; SAFETY 1 (not 0) keeps ordinary type checking; SPEED 3 optimizes the
-;;; level check and field-merge machinery it drives.
 (declaim (optimize (speed 3) (safety 1) (compilation-speed 0)))
 
 (defun log-enabled-p (logger level)

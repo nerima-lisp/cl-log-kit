@@ -1,9 +1,3 @@
-;;;; src/levels.lisp
-;;;
-;;; Log levels are plain integer ranks so that filtering is a simple
-;;; numeric comparison (level< / level<=). Keeping a single, consistent
-;;; representation (integers, not a keyword+alist lookup) avoids the kind
-;;; of "two code paths disagree about what a level means" class of bug.
 (in-package #:log-kit)
 
 (defconstant +level-debug+ 0

@@ -1,14 +1,6 @@
-;;;; run-tests.lisp
-;;;
-;;; Bootstrap script: prepends this repository to ASDF's source registry,
-;;; loads the test system, and runs the suite.
 (require :asdf)
 
-;; Mirrors flake.nix's timeoutSeconds=120: that Nix-level wrapper only
-;; guards `checks.default`/`apps.test`, not a direct `sbcl --script
-;; run-tests.lisp` invocation, so a hung/deadlocked spec must be caught here
-;; too -- the command a contributor runs by hand and the gate CI runs cannot
-;; drift apart.
+;; Keep direct runs bounded like the Nix test wrapper.
 (defparameter *timeout-seconds* 120)
 
 (defun script-directory ()

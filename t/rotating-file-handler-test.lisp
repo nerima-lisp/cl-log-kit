@@ -1,10 +1,3 @@
-;;;; t/rotating-file-handler-test.lisp
-;;;
-;;; ROTATING-FILE-HANDLER: opening a fresh dated file when the clock's
-;;; bucket changes and pruning old ones beyond a retention count. Mirrors
-;;; src/rotating-file-handler.lisp. Exercises real file I/O against a
-;;; disposable temporary directory, mirroring the "real SB-THREAD boundary"
-;;; discipline t/thread-context-test.lisp uses for real concurrency.
 (in-package #:cl-log-kit/test)
 
 (defun %call-with-fresh-log-directory (thunk)
@@ -64,12 +57,8 @@
         (expect (probe-file (merge-pathnames "app-2026-07-25.log" dir)) :to-be-truthy))))
 
   (it "purges retention for an extension-less base pathname too"
-    ;; Every other spec here uses "app.log". A base with no type — "app",
-    ;; "/var/log/myapp" — is just as ordinary, and it used to disable
-    ;; retention *silently*: the writer derives "app-2026-07-22" from
-    ;; :DEFAULTS (no type), while the purge glob interpolated the NIL type
-    ;; into "app-*.NIL", which matches nothing. Nothing errored; the disk
-    ;; just filled up forever.
+    ;; Extension-less bases must retain files using the same extension-less
+    ;; pattern.
     (with-fresh-log-directory (dir)
       (let* ((base (merge-pathnames "app" dir))
              (handler (make-rotating-file-handler
@@ -84,9 +73,7 @@
         (expect (probe-file (merge-pathnames "app-2026-07-25" dir)) :to-be-truthy))))
 
   (it "keeps the retention matcher confined to its own base pathname's shape"
-    ;; The matcher must not sweep up neighbouring files: an extension-less
-    ;; base matches only extension-less rotations, and a "*.log" base only
-    ;; ".log" ones.
+    ;; Match only rotations with the same extension shape as the base.
     (with-fresh-log-directory (dir)
       (dolist (name '("app-2026-07-22" "app-2026-07-23.log" "other-2026-07-22"))
         (close (open (merge-pathnames name dir) :direction :output :if-does-not-exist :create)))

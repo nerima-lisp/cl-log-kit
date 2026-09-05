@@ -1,18 +1,3 @@
-;;;; src/handler.lisp
-;;;
-;;; Handler protocol and the stream backbone shared by every stream-backed
-;;; handler. The concrete wire formats live in their own files:
-;;; handler-text.lisp (key=value text) and handler-json.lisp (one JSON object
-;;; per line), and the low-level encoding primitives both of them share live
-;;; in encoding.lisp.
-;;;
-;;; The Handler protocol is the structural fix for the "log line printed
-;;; twice" bug that was found in cl-cc's ad-hoc logger (where a text-mode
-;;; branch printed a message with %LOG-EMIT-TEXT and a second, unrelated
-;;; code path printed the very same message again). HANDLE-LOG-RECORD is
-;;; the *only* place a handler is allowed to write output, and every
-;;; built-in handler method performs exactly one write call to its stream.
-;;; There is no second code path that could duplicate output.
 (in-package #:log-kit)
 
 (defclass handler ()

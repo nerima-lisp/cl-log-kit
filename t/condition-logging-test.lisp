@@ -1,11 +1,6 @@
-;;;; t/condition-logging-test.lisp
-;;;
-;;; LOG-CONDITION's lazy, bounded rendering of conditions into fields, and the
-;;; bounded-output CPS helper it is built on. Mirrors src/condition-logging.lisp.
 (in-package #:cl-log-kit/test)
 
-;;; A condition whose report itself errors, to prove reports run only on
-;;; demand and failures degrade gracefully.
+;;; A condition whose report itself errors, to verify on-demand rendering.
 (define-condition api-broken-condition (error) ()
   (:report (lambda (condition stream)
              (declare (ignore condition stream))

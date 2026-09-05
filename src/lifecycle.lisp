@@ -1,10 +1,3 @@
-;;;; src/lifecycle.lisp
-;;;
-;;; CLOSE-MANAGED-HANDLER: the reusable, thread-safe close/operation lifecycle
-;;; shared by every composite handler. %CALL-WITH-OPEN-HANDLER-OPERATION and
-;;; %CALL-CLOSE-ONCE are CPS entry points that admit an operation only while
-;;; the handler is open and guarantee a single close even under concurrent
-;;; and re-entrant callers. handlers.lisp builds the concrete handlers on top.
 (in-package #:log-kit)
 
 (defun %validate-error-policy (policy callback)
@@ -95,11 +88,7 @@ operation on HANDLER is refused outright."
             (cl-concurrent-kit:condition-broadcast (%close-managed-waitqueue handler))))))
     handler))
 
-;;; The three macros below are the managed-handler method DSL: they turn a
-;;; method body into the continuation passed to %CALL-WITH-OPEN-HANDLER-OPERATION
-;;; (handle/flush, admitted only while open) or %CALL-CLOSE-ONCE (close, run at
-;;; most once). Every composite handler defines its methods through them, so the
-;;; lifecycle-guard boilerplate lives here exactly once.
+;;; These macros route managed-handler methods through the lifecycle guards.
 
 (defmacro defhandle (class (handler record) &body body)
   "Define a HANDLE-LOG-RECORD method for CLASS whose BODY runs only while the

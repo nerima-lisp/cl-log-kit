@@ -1,14 +1,3 @@
-;;;; t/helpers-matchers.lisp
-;;;
-;;; Domain matchers that lift the suite's field assertions from raw
-;;; (expect (string= (cdr (assoc :k fields)) "v") :to-be-truthy) plumbing up to
-;;; intention-revealing (expect fields :to-have-field :k "v"). Registered
-;;; through cl-weave's own EXPECT-EXTEND, so the framework gains a log-kit
-;;; vocabulary without knowing anything about log-kit.
-;;;
-;;; Field keys are matched by log-kit's canonical rule (case-insensitive,
-;;; symbol-or-string), so a spec names the field it means rather than the exact
-;;; key object the library happened to store.
 (in-package #:cl-log-kit/test)
 
 (defun canonical-field-key (key)
