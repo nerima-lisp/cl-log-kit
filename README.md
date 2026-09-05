@@ -51,7 +51,7 @@ with the same case-insensitive canonical name. Continue with
 ```nix
 # flake.nix
 inputs.cl-log-kit = {
-  url = "github:nerima-lisp/cl-log-kit/v2.1.0";
+  url = "github:nerima-lisp/cl-log-kit/v2.2.0";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```
@@ -106,11 +106,9 @@ this suite uses.
 
 ## Contributing
 
-One constraint is load-bearing: `handle-log-record` is the only place a
-handler writes output. A change that violates it will be asked to change
-rather than to justify itself. Runtime dependencies are limited to the
-nerima-lisp toolkit family (see `cl-log-kit.asd`); a new dependency from
-outside that family needs a real reason, not just convenience.
+`handle-log-record` is the only place a handler writes output. Runtime
+dependencies are limited to the nerima-lisp toolkit family (see
+`cl-log-kit.asd`); dependencies outside that family require justification.
 
 See the org-wide
 [CONTRIBUTING](https://github.com/nerima-lisp/.github/blob/main/CONTRIBUTING.md)

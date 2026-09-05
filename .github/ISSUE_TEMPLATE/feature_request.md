@@ -17,8 +17,8 @@ Describe the smallest change that would solve the problem.
 
 Two project constraints that shape what fits:
 
-- The shipped `cl-log-kit` system has **zero runtime dependencies** (ASDF
-  and SBCL only). Does this proposal need one?
+- The shipped `cl-log-kit` system depends on the nerima-lisp toolkit family.
+  Does this proposal add a dependency outside that family?
 - A new destination or encoding is usually a **handler**, not a change to
   the core — see
   [Extending cl-log-kit](https://nerima-lisp.github.io/cl-log-kit/extension/).

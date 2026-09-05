@@ -3,7 +3,7 @@
 !!! info "Prerequisites"
 
     `cl-log-kit` targets [SBCL](https://www.sbcl.org/) and requires ASDF
-    3.3.1 or newer (a modern SBCL already bundles a recent-enough ASDF). The
+    3.3.1 or newer (SBCL includes a recent-enough ASDF). The
     shipped `cl-log-kit` system also depends on three nerima-lisp toolkit
     packages — `cl-date-kit`, `cl-concurrent-kit`, and `cl-host-kit` — loaded
     at runtime; see [Compatibility](reference/compatibility.md) for what each
@@ -75,7 +75,7 @@ Pick the path that matches how you use the library.
 
 `cl-log-kit` is developed and tested against SBCL, and its runtime
 dependencies (`cl-date-kit`, `cl-concurrent-kit`, `cl-host-kit`) are
-themselves SBCL-only, so it should load cleanly on any modern ASDF 3.3.1+
+themselves SBCL-only, so it should load cleanly on any ASDF 3.3.1+
 SBCL setup; SBCL is the only implementation the test suite and CI pipeline
 exercise. See [Compatibility](reference/compatibility.md) for the platforms
 the flake builds and the stability promise attached to the exported surface.

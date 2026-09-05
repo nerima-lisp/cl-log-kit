@@ -1,19 +1,14 @@
 # Development
 
-## Two constraints worth knowing up front
-
-Both are load-bearing, and a change that violates either will be asked to
-change rather than to justify itself:
+## Constraints
 
 1. **The shipped `cl-log-kit` system's runtime dependencies are limited to
    the nerima-lisp toolkit family** — ASDF 3.3.1+, SBCL, `cl-date-kit`,
    `cl-concurrent-kit`, and `cl-host-kit`, each used directly with no
    adapter layer. `cl-weave` and `cl-json-kit` are used by `cl-log-kit/test`
-   only. A dependency from outside that family is a design change, not a
-   detail.
-2. **`handle-log-record` is the only place a handler writes output.** The
-   protocol exists to make "this log line was printed twice" structurally
-   impossible; a second write path defeats it.
+   only. A dependency from outside that family changes the supported design.
+2. **`handle-log-record` is the only place a handler writes output.** A second
+   write path could duplicate a log line.
 
 ## Environment
 
@@ -55,60 +50,46 @@ nix develop -c sbcl --script run-coverage.lisp
 ```
 
 `run-coverage.lisp` runs the suite through `cl-weave:run-all`'s native
-`:coverage` support and **fails the build if coverage regresses** below the
-floors set in that file — 94.9% expression / 98.45% branch. The suite
-actually reaches 95.03% / 98.51%; the floors sit just below that so ordinary
-platform variance in sb-cover's own accounting cannot trip the gate
-spuriously while a real regression still does.
+`:coverage` support and fails below the floors set in that file: 94.9%
+expression / 98.45% branch. The current measured values are recorded by the
+coverage run; the HTML report is written to `coverage/cover-index.html`.
 
-**Lowering a floor requires an explanation of what became unmeasurable and
-why**, not a quiet edit. The comment at the top of `run-coverage.lisp`
-records the existing accounting.
+The comment at the top of `run-coverage.lisp` records the accounting behind
+the floors. Explain any reduction in a floor there.
 
-Read the expression figure with two structural costs in mind, both
-deliberate:
+Two structural costs affect the expression figure:
 
-- **CPS helper pairs.** Extracting a repeated `with-mutex` or cycle-marking
-  form into a `%call-with-…`/`with-…` pair moves that logic behind one more
-  `defmacro` body — better code, and a body sb-cover's runtime
-  instrumentation cannot observe.
-- **Docstrings.** All 101 exported symbols carry one, and sb-cover counts a
-  docstring literal as an expression it can never see execute: the *covered*
-  count is untouched while the total rises.
+- **CPS helper pairs.** A `%call-with-…`/`with-…` pair puts the helper body
+  behind a `defmacro`, which sb-cover's runtime instrumentation cannot observe.
+- **Docstrings.** sb-cover counts each docstring literal as an expression,
+  although runtime instrumentation cannot observe it.
 
-Every remaining gap above the floor is confirmed non-executable by
-construction — a `defconstant`, `defclass`/`defstruct` slot list,
-`defpackage` export list, `in-package` form, or a `defmacro`/
-`define-condition` body — not an unexamined shortfall. The HTML report is
-written to `coverage/cover-index.html`.
+The remaining uncovered forms are definitions or macro bodies that runtime
+instrumentation cannot observe.
 
 ## Test-writing techniques
 
-Tests live in `t/`, mirroring `src/` file by file. Beyond ordinary
-`describe`/`it`/`expect` specs, this suite uses several of `cl-weave`'s more
-advanced facilities rather than hand-rolling equivalents:
+Tests live in `t/`, mirroring `src/` file by file. The suite also uses
+`cl-weave` facilities:
 
 - **Domain matchers.** `t/helpers-matchers.lisp` registers `cl-weave:expect-extend`
   matchers (`:to-have-field`, `:to-have-field-matching`, `:to-lack-field`,
   `:to-be-single-line`, `:to-have-recorded`, `:to-contain-substring`) so
   specs read as `(expect fields :to-have-field :k "v")` instead of manually
-  destructuring an alist in every test — the framework gains a `log-kit`
-  vocabulary without knowing anything about `log-kit` itself.
+  destructuring an alist in every test.
 - **Property-based testing.** `t/property-test.lisp` uses `it-property` with
   `cl-weave` generators (`gen-integer`, `gen-string`, `gen-recursive`,
   `gen-one-of`, ...) to state invariants that must hold for every generated
-  input — that `level<`/`level<=` agree with plain integer comparison, or
-  that the recursive field snapshot is a structure-sharing-free copy — rather
-  than relying only on hand-picked examples.
+  input. Examples include agreement between `level<`/`level<=` and plain
+  integer comparison, and structure-sharing-free recursive field snapshots.
 - **Fuzzing with a bounded budget.** `it-fuzz` runs the text handler against
   200 generated `(:trials 200 :timeout-per-trial 2)` key/value combinations
-  to prove it never signals regardless of input shape, with each trial
-  individually time-bounded so a pathological generated value cannot hang the
-  suite.
+  and checks that it does not signal for any generated input shape. Each trial
+  is time-bounded.
 - **Mutation testing.** `cl-weave:run-mutations`/`assert-mutation-score`
   generate every one-operator mutant of a small reference expression and
-  require the library's own `level<`/`level<=` to kill every one of them,
-  proving those wrappers introduce zero drift from plain integer comparison.
+  require the library's own `level<`/`level<=` to kill every one, checking that
+  the wrappers match plain integer comparison.
 - **Inline snapshot testing.** `:to-match-inline-snapshot` pins a rendered
   value's exact textual form directly in the spec, so a future accidental
   format change shows up as a snapshot diff instead of a silent pass.
@@ -126,8 +107,8 @@ mutation-testing, and mocking pages.
 
 - Keep a pull request focused on one problem, and discuss substantial
   public-API changes in an issue first. A change to an exported symbol needs
-  a major version and a documented migration path, so it is worth agreeing on
-  the shape before the implementation.
+  a major version and a documented migration path, so agree on the shape before
+  implementation.
 - Add or update specs for every behavior change.
 - When the public surface or documented behavior moves, update the affected
   pages under `docs/src/`. Release history is not kept in the tree: it lives

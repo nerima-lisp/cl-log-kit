@@ -37,16 +37,9 @@ On that same run `cl-log-kit` was roughly 1.3x slower in that minimal
 configuration — 477 ns/call against log4cl's 370 ns/call, both
 allocation-free.
 
-The honest framing is that the residual gap is the genuine cost of work
-log4cl's comparably-configured path does not do at all. On every call
-`cl-log-kit` escapes and anti-spoofs every emitted token, writes a structured
-per-field record, and guarantees the deep, cycle-checked field snapshot,
-canonical-key deduplication, reentrant thread-safe stream serialization, and
-structured resource-limit conditions described in
+The difference includes work that the compared log4cl path does not do. On
+each call `cl-log-kit` escapes emitted tokens, writes a structured per-field
+record, and performs the deep field snapshot, canonical-key deduplication,
+reentrant stream serialization, and resource-limit checks described in
 [Fields](../guide/fields.md) and [Handlers](../guide/handlers.md). log4cl writes one
 already-formatted message string.
-
-`cl-log-kit` is not, and does not claim to be, the fastest Common Lisp
-logging library in an unqualified sense. Matching that number would mean
-dropping the exactly-once, thread-safe write guarantee `handler.lisp`
-documents itself as existing to enforce.

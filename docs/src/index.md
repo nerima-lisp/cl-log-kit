@@ -10,8 +10,7 @@ no adapter layer in between.
 
 !!! tip "New to cl-log-kit?"
 
-    Load it, build a logger, and emit your first structured log line in under
-    a minute:
+    Load it, build a logger, and emit your first structured log line:
 
     ```lisp
     (asdf:load-system "cl-log-kit")
@@ -66,42 +65,35 @@ no adapter layer in between.
 
 </div>
 
-## Production readiness
+## Project checks
 
-"Production ready" is a checkable claim here, not a slogan:
-
-- **Zero runtime dependencies.** The shipped `cl-log-kit` system depends on
-  nothing but ASDF 3.3.1 or newer and SBCL itself — nothing to audit, pin, or
-  break in a consumer's own dependency graph. `cl-log-kit/test` depends on
-  `cl-weave` and `cl-json-kit`, both test-only.
-- **Semantic Versioning, enforced by release-note discipline.** Every behavior
-  change is recorded in the
+- **Small runtime dependency set.** The shipped `cl-log-kit` system depends on
+  `cl-date-kit`, `cl-concurrent-kit`, and `cl-host-kit`; `cl-log-kit/test`
+  additionally depends on `cl-weave` and `cl-json-kit`.
+- **Semantic Versioning.** Behavior changes are recorded in the
   [release notes](https://github.com/nerima-lisp/cl-log-kit/releases) under the
   version it shipped in, and anything that changes the shape or behavior of an
   exported symbol gets a major version and its own migration path. See
   [Compatibility](reference/compatibility.md).
-- **A CI gate that runs the exact suite a contributor runs locally.**
-  `nix flake check` drives the SBCL suite, the formatting gate, and this
-  site's `--strict` build; a separate coverage gate fails the build on any
-  expression or branch coverage regression, currently 95.03% / 98.51%. See
+- **Automated checks.** `nix flake check` runs the SBCL suite, formatting, and
+  this site's `--strict` build. A separate coverage gate checks expression and
+  branch coverage, currently 95.03% / 98.51%. See
   [Development](project/development.md).
-- **Concurrency-safe by construction, not by convention.** Every handler that
-  owns a stream serializes writes and closes through a single reentrant lock,
+- **Concurrency.** Every handler that owns a stream serializes writes and closes
+  through a single reentrant lock,
   and every composite handler's lifecycle guarantees close-at-most-once under
   concurrent and recursive callers. These are exercised by dedicated
   multi-thread specs, not single-threaded examples. See
   [Handlers](guide/handlers.md).
-- **Bounded by construction against hostile or malformed input.** Field
-  depth, node count, string length, and collection size are all capped, with
-  structured conditions on every limit, so a logging call can never be the
-  vector for an unbounded-memory or infinite-loop bug even on
-  attacker-influenced field values. See [Fields](guide/fields.md).
+- **Input limits.** Field depth, node count, string length, and collection size
+  are capped, with structured conditions for each limit. See
+  [Fields](guide/fields.md).
 - **MIT-licensed**, with a public bug tracker and no undocumented private
   API — every exported symbol has a docstring.
 
 ## Status
 
-Version 2.1.0. `cl-log-kit` is a small, stable surface — see the
+Version 2.2.0. `cl-log-kit` is a small, stable surface — see the
 [API Reference](reference/api.md) for the full list of exported symbols. The
 capability list below is the intended public surface, validated by the test
 suite documented in [Development](project/development.md):
@@ -163,7 +155,7 @@ suite documented in [Development](project/development.md):
 - [Compatibility](reference/compatibility.md) — supported platforms, the stability
   promise, and what counts as a security defect.
 - [Benchmarks](reference/benchmarks.md) — `handle-log-record` timings and the
-  zero-allocation guarantee the suite asserts.
+  allocation bounds checked by the suite.
 - [Development](project/development.md) — the dev shell, coverage floors, and the
   Nix-driven test workflow.
 
